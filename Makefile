@@ -1,5 +1,9 @@
-# EASS Student Project Evaluator
-# ===============================
+# Load .env if it exists
+-include .env
+export
+
+WORKERS ?= 4
+N ?= 3
 
 .PHONY: help run run-all run-parallel run-limit run-codex clean clean-all setup lint format test
 
@@ -10,7 +14,7 @@ help:
 	@echo "Usage:"
 	@echo "  make run           Run with Gemini (first 5 submissions)"
 	@echo "  make run-codex     Run with Codex (first 5 submissions)"
-	@echo "  make run-all       Run on all submissions (parallel, 4 workers)"
+	@echo "  make run-all       Run on all submissions (parallel, $(WORKERS) workers)"
 	@echo "  make run-parallel  Run on all submissions in parallel"
 	@echo "  make run-limit N=3 Run on first N submissions"
 	@echo "  make clean         Remove work directory"
@@ -27,12 +31,10 @@ run-codex:
 	./run.sh --ai codex --limit 5
 
 run-all:
-	./run.sh --ai gemini --parallel --workers 4
+	./run.sh --ai gemini --parallel --workers $(WORKERS)
 
 run-parallel:
 	./run.sh --ai gemini --parallel --workers $(WORKERS)
-
-WORKERS ?= 4
 N ?= 3
 run-limit:
 	./run.sh --ai gemini --limit $(N)
