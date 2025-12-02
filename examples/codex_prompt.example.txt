@@ -1,0 +1,15 @@
+### Codex prompt template (placeholders)
+
+Use placeholders when constructing prompts. Replace the placeholders with actual content at runtime.
+
+Task: Review the repository at `{{REPO_URL}}` and run the project's test suite.
+
+Student: {{STUDENT_NAME}}
+
+Instructions:
+- Clone `{{REPO_URL}}`
+- Install dependencies
+- Run tests
+- Summarize test results and score according to rubric
+
+Notes: Remove any real API keys or secrets from prompts before committing.

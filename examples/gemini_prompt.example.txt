@@ -1,0 +1,11 @@
+### Gemini prompt template (placeholders)
+
+Prompt: Evaluate the FastAPI project hosted at `{{REPO_URL}}` for the student `{{STUDENT_NAME}}`.
+
+Steps:
+1. Clone the repository at `{{REPO_URL}}`.
+2. Install project dependencies.
+3. Run the test suite and API checks.
+4. Produce a score breakdown and short recommendations.
+
+Do not include any private data or keys in the prompt.

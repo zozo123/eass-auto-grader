@@ -14,6 +14,7 @@ results/
 # ──────────────────────────────────────────────────────────────────────────────
 .env
 .env.*
+!.env.example
 *.env
 .envrc
 secrets/
@@ -24,10 +25,12 @@ credentials/
 *.p12
 *.pfx
 
-# Google/Gemini credentials
+# Google/Gemini CLI credentials & cache
+.gemini/
 *.json
 !evaluation_schema.json
 !pyproject.toml
+!examples/*.json
 application_default_credentials.json
 gcloud/
 .config/gcloud/
@@ -44,6 +47,7 @@ submission.csv
 submissions/
 *.csv
 !results/*.csv
+!examples/*.csv
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PYTHON

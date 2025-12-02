@@ -118,6 +118,189 @@ def append_to_log(path: Path, contents: str) -> None:
         handle.write("\n")
 
 
+def validate_json_file(path: Path) -> Dict[str, Any]:
+    """Quickly validate that a file exists and contains valid JSON."""
+    status: Dict[str, Any] = {
+        "path": str(path),
+        "exists": path.exists(),
+        "valid": False,
+        "error": "",
+        "quota_exceeded": False,
+        "rate_limited": False,
+    }
+    if not status["exists"]:
+        status["error"] = "missing"
+        return status
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            content = handle.read()
+            if not content.strip():
+                status["error"] = "empty file"
+                return status
+            data = json.loads(content)
+            
+        # Check for quota/rate limit errors in the response
+        status["quota_exceeded"], status["rate_limited"] = detect_quota_error(data, content)
+        
+        if status["quota_exceeded"] or status["rate_limited"]:
+            status["error"] = "quota_exceeded" if status["quota_exceeded"] else "rate_limited"
+        else:
+            status["valid"] = True
+    except json.JSONDecodeError as exc:
+        status["error"] = f"JSONDecodeError: {exc}"
+    except Exception as exc:
+        status["error"] = str(exc)
+    return status
+
+
+def detect_quota_error(data: Any, raw_content: str = "") -> tuple[bool, bool]:
+    """Detect quota/rate limit errors from AI provider responses.
+    
+    Handles errors from:
+    - Gemini CLI (OAuth-based, outputs JSON with error field)
+    - Codex CLI (outputs JSON with status/message)
+    - Gemini API (HTTP errors in JSON response)
+    - Local LLM (connection errors, model errors)
+    
+    Returns:
+        tuple: (quota_exceeded, rate_limited)
+    """
+    quota_exceeded = False
+    rate_limited = False
+    
+    # === Quota/billing error patterns ===
+    quota_patterns = [
+        "quota exceeded",
+        "quota_exceeded", 
+        "resource exhausted",
+        "resourceexhausted",
+        "billing",
+        "payment required",
+        "insufficient_quota",
+        "out of quota",
+        "api key not valid",
+        "api_key_invalid",
+        "invalid api key",
+        "permission denied",
+        "access denied",
+        "unauthorized",
+        "authentication failed",
+    ]
+    
+    # === Rate limit patterns ===
+    rate_limit_patterns = [
+        "rate limit",
+        "rate_limit",
+        "ratelimit",
+        "too many requests",
+        "429",
+        "throttl",
+        "slow down",
+        "retry after",
+        "requests per minute",
+        "rpm limit",
+        "tpm limit",
+        "token limit",
+        "context length exceeded",
+        "max.* tokens",
+    ]
+    
+    # === CLI-specific error patterns ===
+    cli_error_patterns = [
+        # Gemini CLI errors
+        "error when talking to gemini",
+        "failed to connect",
+        "connection refused",
+        "network error",
+        "timeout",
+        "timed out",
+        "could not resolve",
+        "ssl error",
+        "certificate",
+        # Codex CLI errors  
+        "openai error",
+        "api error",
+        "model not found",
+        "model_not_found",
+        "service unavailable",
+        "internal server error",
+        "bad gateway",
+        "502", "503", "504",
+        # Local LLM errors
+        "connection reset",
+        "broken pipe",
+        "server not responding",
+    ]
+    
+    # Check raw content (case-insensitive)
+    content_lower = raw_content.lower()
+    
+    for pattern in quota_patterns:
+        if pattern in content_lower:
+            quota_exceeded = True
+            break
+    
+    for pattern in rate_limit_patterns:
+        if pattern in content_lower:
+            rate_limited = True
+            break
+    
+    # CLI errors often mean we should try another provider
+    for pattern in cli_error_patterns:
+        if pattern in content_lower:
+            # Treat connection/API errors as rate-limit-like (recoverable with different provider)
+            rate_limited = True
+            break
+    
+    # Check structured error responses
+    if isinstance(data, dict):
+        # === Gemini CLI error format ===
+        # {"error": {"code": 429, "message": "...", "status": "RESOURCE_EXHAUSTED"}}
+        error = data.get("error", {})
+        if isinstance(error, dict):
+            error_code = str(error.get("code", "")).lower()
+            error_status = str(error.get("status", "")).lower()
+            error_message = str(error.get("message", "")).lower()
+            
+            all_error_text = f"{error_code} {error_status} {error_message}"
+            
+            if any(p in all_error_text for p in ["resource_exhausted", "quota", "billing", "permission"]):
+                quota_exceeded = True
+            if any(p in all_error_text for p in ["429", "rate", "throttl", "too many"]):
+                rate_limited = True
+        
+        # === Simple error string at top level ===
+        if "error" in data and isinstance(data["error"], str):
+            error_str = data["error"].lower()
+            if any(p in error_str for p in quota_patterns):
+                quota_exceeded = True
+            if any(p in error_str for p in rate_limit_patterns + cli_error_patterns):
+                rate_limited = True
+                
+        # === Codex CLI error format ===
+        # {"status": "error", "message": "..."}
+        if data.get("status") == "error":
+            msg = str(data.get("message", "")).lower()
+            if any(p in msg for p in quota_patterns):
+                quota_exceeded = True
+            if any(p in msg for p in rate_limit_patterns + cli_error_patterns):
+                rate_limited = True
+        
+        # === Check if response has expected structure ===
+        # Valid evaluation should have scores or final_score
+        has_valid_structure = (
+            "final_score" in data or 
+            "scores" in data or
+            ("response" in data and len(str(data.get("response", ""))) > 100)
+        )
+        
+        # If we got JSON but it's just an error wrapper, mark as rate limited
+        if not has_valid_structure and ("error" in data or data.get("status") == "error"):
+            rate_limited = True
+    
+    return quota_exceeded, rate_limited
+
+
 def parse_ruff_output(stdout: str) -> Dict[str, Any]:
     """Parse ruff format --check output to extract detailed stats."""
     result = {
@@ -238,10 +421,10 @@ def capture_tree(repo_dir: Path, artifacts_dir: Path, max_depth: int = 4) -> str
 
 
 def parse_gemini_evaluation(
-    artifacts_dir: Path, logger: logging.Logger
+    artifacts_dir: Path, logger: logging.Logger, filename: str = "gemini.json"
 ) -> Dict[str, Any]:
     """Parse the comprehensive Gemini evaluation response."""
-    gemini_path = artifacts_dir / "gemini.json"
+    gemini_path = artifacts_dir / filename
     if not gemini_path.exists():
         return {}
 
@@ -256,23 +439,53 @@ def parse_gemini_evaluation(
     if isinstance(raw_data, dict) and "response" in raw_data:
         response_str = raw_data["response"]
         if isinstance(response_str, str):
-            # Strip markdown code fences
-            clean_response = response_str.strip()
-            if clean_response.startswith("```"):
-                clean_response = re.sub(r"^```(?:json)?\s*", "", clean_response)
-                clean_response = re.sub(r"\s*```$", "", clean_response)
-            try:
-                raw_data = json.loads(clean_response)
-            except json.JSONDecodeError:
-                # Try to find JSON object in response
-                json_match = re.search(r"\{[\s\S]*\}", response_str)
-                if json_match:
-                    try:
-                        raw_data = json.loads(json_match.group(0))
-                    except json.JSONDecodeError:
+            # Find ALL JSON blocks in the response (model may output multiple iterations)
+            # We want the LAST complete one with a valid final_score
+            json_blocks = []
+            
+            # Find all ```json ... ``` blocks
+            json_pattern = r'```(?:json)?\s*(\{[\s\S]*?\})\s*```'
+            matches = re.findall(json_pattern, response_str)
+            
+            for match in matches:
+                try:
+                    parsed = json.loads(match)
+                    if isinstance(parsed, dict) and "scores" in parsed:
+                        json_blocks.append(parsed)
+                except json.JSONDecodeError:
+                    continue
+            
+            # If we found valid JSON blocks, use the last one with best data
+            if json_blocks:
+                # Prefer the last block with a non-zero final_score
+                best_block = None
+                for block in reversed(json_blocks):
+                    final_score = block.get("final_score", 0)
+                    if final_score and float(final_score) > 0:
+                        best_block = block
+                        break
+                # If no block has final_score, take the last one (most complete)
+                if best_block is None:
+                    best_block = json_blocks[-1]
+                raw_data = best_block
+            else:
+                # Fallback: try to parse the whole response
+                clean_response = response_str.strip()
+                if clean_response.startswith("```"):
+                    clean_response = re.sub(r"^```(?:json)?\s*", "", clean_response)
+                    clean_response = re.sub(r"\s*```$", "", clean_response)
+                try:
+                    raw_data = json.loads(clean_response)
+                except json.JSONDecodeError:
+                    # Try to find any JSON object in response
+                    json_match = re.search(r"\{[\s\S]*\}", response_str)
+                    if json_match:
+                        try:
+                            raw_data = json.loads(json_match.group(0))
+                        except json.JSONDecodeError:
+                            return {}
+                    else:
                         return {}
-                else:
-                    return {}
 
     # Validate it has the expected structure
     if not isinstance(raw_data, dict):
@@ -608,14 +821,47 @@ def generate_report(entries: List[Dict[str, Any]], results_dir: Path) -> None:
                 f"| {entry['student_name']} | {ok} | {total_f} | {ratio}% | {status_icon} |"
             )
 
-    # Project Files Analysis
-    pf_stats = [e.get("project_files", {}) for e in entries if e.get("project_files")]
-    has_readme = sum(1 for p in pf_stats if p.get("has_readme"))
-    has_gitignore = sum(1 for p in pf_stats if p.get("has_gitignore"))
-    has_dockerfile = sum(1 for p in pf_stats if p.get("has_dockerfile"))
-    has_tests = sum(1 for p in pf_stats if p.get("has_tests"))
-    has_requirements = sum(1 for p in pf_stats if p.get("has_requirements"))
-    pf_total = len(pf_stats) if pf_stats else 1  # avoid division by zero
+    # Project Files Analysis - use Gemini's file_inventory as source of truth
+    # This correctly detects files in nested directories (e.g., backend/Dockerfile)
+    pf_total = 0
+    has_readme = 0
+    has_gitignore = 0
+    has_dockerfile = 0
+    has_tests = 0
+    has_requirements = 0
+
+    for e in entries:
+        ge = e.get("gemini_eval", {})
+        file_inv = ge.get("file_inventory", {})
+        if file_inv:
+            pf_total += 1
+            if file_inv.get("has_readme"):
+                has_readme += 1
+            if file_inv.get("has_gitignore"):
+                has_gitignore += 1
+            if file_inv.get("has_dockerfile"):
+                has_dockerfile += 1
+            if file_inv.get("has_tests_dir"):
+                has_tests += 1
+            if file_inv.get("has_requirements") or file_inv.get("has_pyproject"):
+                has_requirements += 1
+        else:
+            # Fallback to naive local check if Gemini data unavailable
+            pf = e.get("project_files", {})
+            if pf:
+                pf_total += 1
+                if pf.get("has_readme"):
+                    has_readme += 1
+                if pf.get("has_gitignore"):
+                    has_gitignore += 1
+                if pf.get("has_dockerfile"):
+                    has_dockerfile += 1
+                if pf.get("has_tests"):
+                    has_tests += 1
+                if pf.get("has_requirements"):
+                    has_requirements += 1
+
+    pf_total = pf_total if pf_total > 0 else 1  # avoid division by zero
 
     lines.extend(
         [
@@ -639,11 +885,33 @@ def generate_report(entries: List[Dict[str, Any]], results_dir: Path) -> None:
         ]
     )
 
-    missing_files_entries = [
-        (e["student_name"], e.get("project_files", {}).get("missing", []))
-        for e in sorted_entries
-        if e.get("project_files", {}).get("missing")
-    ]
+    # Use Gemini's file_inventory (authoritative) instead of naive check
+    # This properly detects files in nested directories (e.g., backend/Dockerfile)
+    missing_files_entries = []
+    for e in sorted_entries:
+        ge = e.get("gemini_eval", {})
+        file_inv = ge.get("file_inventory", {})
+        # Fall back to local check only if Gemini didn't analyze
+        if file_inv:
+            missing = []
+            if not file_inv.get("has_readme"):
+                missing.append("README")
+            if not file_inv.get("has_gitignore"):
+                missing.append(".gitignore")
+            if not file_inv.get("has_dockerfile"):
+                missing.append("Dockerfile")
+            if not file_inv.get("has_tests_dir"):
+                missing.append("tests")
+            if not file_inv.get("has_requirements") and not file_inv.get("has_pyproject"):
+                missing.append("requirements.txt/pyproject.toml")
+            if missing:
+                missing_files_entries.append((e["student_name"], missing))
+        else:
+            # Fallback to naive local check if Gemini data unavailable
+            local_missing = e.get("project_files", {}).get("missing", [])
+            if local_missing:
+                missing_files_entries.append((e["student_name"], local_missing))
+
     if missing_files_entries:
         for name, missing in missing_files_entries:
             lines.append(f"- **{name}**: Missing {', '.join(missing)}")
@@ -1023,10 +1291,15 @@ def main() -> None:
     )
     parser.add_argument(
         "--gemini-command",
-        default="gemini evaluate {repo_dir} --output {artifacts_dir}/gemini.json",
+        default="",
         help="Gemini command.",
     )
-    parser.add_argument("--codex-command", default=None, help="Codex command.")
+    parser.add_argument("--codex-command", default="", help="Codex command.")
+    parser.add_argument(
+        "--fallback-codex",
+        action="store_true",
+        help="If Gemini fails, fall back to Codex command.",
+    )
     parser.add_argument(
         "--timeout-seconds", type=float, default=300.0, help="Timeout per command."
     )
@@ -1069,15 +1342,22 @@ def main() -> None:
     if args.limit:
         rows = rows[: args.limit]
 
-    commands: List[str] = []
+    analysis_commands: List[tuple[str, str]] = []
     if args.format_check:
-        commands.append(args.format_command)
-    if args.gemini_command:
-        commands.append(args.gemini_command)
-    if args.codex_command:
-        commands.append(args.codex_command)
-    commands.extend(args.extra_command)
-    if not commands:
+        analysis_commands.append(("format", args.format_command))
+
+    primary_label = "gemini" if args.gemini_command else "codex"
+    primary_command = args.gemini_command or args.codex_command
+    if primary_command:
+        analysis_commands.append((primary_label, primary_command))
+
+    fallback_command = (
+        args.codex_command if args.gemini_command and args.fallback_codex else None
+    )
+
+    analysis_commands.extend([("extra", cmd) for cmd in args.extra_command])
+
+    if not analysis_commands:
         raise SystemExit("At least one analysis command must be specified")
 
     results: List[Dict[str, Any]] = []
@@ -1113,6 +1393,11 @@ def main() -> None:
         clone_failure = False
         ruff_stats: Dict[str, Any] = {}
         project_files: Dict[str, Any] = {}
+        gemini_validation: Dict[str, Any] = {}
+        codex_validation: Dict[str, Any] = {}
+        gemini_command_ran = False
+        codex_command_ran = False
+        score_file_used = args.score_file
 
         with tempfile.TemporaryDirectory(prefix=f"{slug}-") as temp_root:
             repo_dir = Path(temp_root) / "repo"
@@ -1164,7 +1449,9 @@ def main() -> None:
                         shutil.rmtree(dst_repo)
                     shutil.copytree(repo_dir, dst_repo)
 
-                for idx, command_template in enumerate(commands, start=1):
+                for idx, (command_label, command_template) in enumerate(
+                    analysis_commands, start=1
+                ):
                     context = {
                         "repo_dir": repo_dir,
                         "artifacts_dir": artifacts_dir,
@@ -1196,7 +1483,7 @@ def main() -> None:
                     append_to_log(artifacts_dir / "errors.log", log_message)
 
                     # Parse ruff output for detailed stats
-                    if args.format_check and command_template == args.format_command:
+                    if args.format_check and command_label == "format":
                         ruff_stats = parse_ruff_output(result.stdout or "")
                         ruff_json_path = artifacts_dir / "ruff_stats.json"
                         with ruff_json_path.open("w", encoding="utf-8") as f:
@@ -1211,20 +1498,172 @@ def main() -> None:
                                 ruff_stats["files_need_formatting"],
                                 ruff_stats["total_files"],
                             )
+                    elif command_label in {"gemini", "codex"}:
+                        validation_target = (
+                            args.score_file
+                            if command_label == "gemini"
+                            else "codex.json"
+                        )
+                        validation = validate_json_file(
+                            artifacts_dir / validation_target
+                        )
+                        
+                        # Also check stderr for CLI errors (rate limits, connection issues)
+                        stderr_lower = (result.stderr or "").lower()
+                        if not validation.get("quota_exceeded") and not validation.get("rate_limited"):
+                            # Check stderr for error patterns
+                            stderr_quota, stderr_rate = detect_quota_error({}, stderr_lower)
+                            if stderr_quota:
+                                validation["quota_exceeded"] = True
+                                validation["error"] = validation.get("error", "") + " (stderr: quota)"
+                            if stderr_rate:
+                                validation["rate_limited"] = True
+                                validation["error"] = validation.get("error", "") + " (stderr: rate limit)"
+                        
+                        # Also mark as error if command failed and output is missing/empty
+                        if result.returncode != 0 and not validation.get("valid"):
+                            if not validation.get("rate_limited") and not validation.get("quota_exceeded"):
+                                validation["rate_limited"] = True  # Treat CLI failure as rate-limit-like
+                                validation["error"] = f"CLI exit code {result.returncode}"
+                        
+                        analysis_log.append(
+                            {
+                                "step": f"validate-json-{command_label}",
+                                **validation,
+                            }
+                        )
+                        # Log quota/rate limit issues
+                        if validation.get("quota_exceeded"):
+                            logger.warning("%s quota exceeded for %s", command_label.title(), slug)
+                        elif validation.get("rate_limited"):
+                            logger.warning("%s rate limited/error for %s", command_label.title(), slug)
+                        elif validation.get("exists") and not validation.get("valid"):
+                            notes.append("AI output invalid JSON")
+                            append_to_log(
+                                artifacts_dir / "errors.log",
+                                f"[validate-json-{command_label}] {validation}",
+                            )
+                        if command_label == "gemini":
+                            gemini_validation = validation
+                            gemini_command_ran = True
+                        if command_label == "codex":
+                            codex_validation = validation
+                            codex_command_ran = True
                     elif result.returncode != 0:
                         notes.append(f"{command.split()[0]} error")
                         logger.warning(
                             "Command %s returned %d", command, result.returncode
                         )
 
+                # Conditional fallback: if Gemini failed and fallback enabled, run Codex
+                if (
+                    command_label == "gemini"
+                    and not clone_failure
+                    and args.fallback_codex
+                    and args.codex_command
+                ):
+                    # Check if Gemini succeeded or hit quota/rate limits
+                    gemini_ok = (
+                        result.returncode == 0 and gemini_validation.get("valid", False)
+                    )
+                    quota_issue = (
+                        gemini_validation.get("quota_exceeded", False) or 
+                        gemini_validation.get("rate_limited", False)
+                    )
+                    
+                    # Log quota/rate limit issues
+                    if quota_issue:
+                        if gemini_validation.get("quota_exceeded"):
+                            logger.warning("Gemini quota exceeded, switching to fallback")
+                            notes.append("Gemini quota exceeded")
+                        elif gemini_validation.get("rate_limited"):
+                            logger.warning("Gemini rate limited, switching to fallback")
+                            notes.append("Gemini rate limited")
+                    
+                    if not gemini_ok or quota_issue:
+                        fallback_cmd = args.codex_command.format(
+                            **{k: str(v) for k, v in context.items()}
+                        )
+                        start = datetime.now(UTC)
+                        fallback_result = run_command(
+                            fallback_cmd,
+                            cwd=repo_dir,
+                            dry_run=args.dry_run,
+                            timeout=timeout,
+                        )
+                        duration_fallback = (datetime.now(UTC) - start).total_seconds()
+                        entry_fb = {
+                            "step": f"analysis-{idx}-fallback-codex",
+                            "command": fallback_cmd,
+                            "returncode": fallback_result.returncode,
+                            "stdout": (fallback_result.stdout or "").strip(),
+                            "stderr": (fallback_result.stderr or "").strip(),
+                            "duration_seconds": duration_fallback,
+                        }
+                        analysis_log.append(entry_fb)
+                        append_to_log(
+                            artifacts_dir / "errors.log",
+                            f"[analysis-{idx}-fallback-codex] {fallback_cmd}\nExit: {fallback_result.returncode}\nStdout: {entry_fb['stdout']}\nStderr: {entry_fb['stderr']}",
+                        )
+
+                        codex_validation = validate_json_file(
+                            artifacts_dir / "codex.json"
+                        )
+                        analysis_log.append(
+                            {"step": "validate-json-codex", **codex_validation}
+                        )
+                        codex_command_ran = True
+
+                        # Check for quota issues in Codex response too
+                        if codex_validation.get("quota_exceeded"):
+                            notes.append("Codex quota exceeded")
+                            logger.warning("Codex also hit quota limits")
+                        elif codex_validation.get("rate_limited"):
+                            notes.append("Codex rate limited")
+                            logger.warning("Codex also hit rate limits")
+                        elif (
+                            codex_validation.get("exists")
+                            and not codex_validation.get("valid")
+                        ):
+                            notes.append("AI output invalid JSON (fallback)")
+                            append_to_log(
+                                artifacts_dir / "errors.log",
+                                f"[validate-json-codex] {codex_validation}",
+                            )
+
         # Parse comprehensive Gemini evaluation
         gemini_eval: Dict[str, Any] = {}
         if not clone_failure:
-            gemini_eval = parse_gemini_evaluation(Path(artifacts_dir), logger)
+            # Choose which AI output to read: prefer Gemini, else valid Codex fallback
+            score_filename = args.score_file
+            if args.fallback_codex and codex_command_ran:
+                gemini_ok = gemini_validation.get("valid", False)
+                gemini_quota_issue = (
+                    gemini_validation.get("quota_exceeded", False) or
+                    gemini_validation.get("rate_limited", False)
+                )
+                codex_ok = codex_validation.get("valid", False)
+                codex_quota_issue = (
+                    codex_validation.get("quota_exceeded", False) or
+                    codex_validation.get("rate_limited", False)
+                )
+                
+                # Use Codex if Gemini failed/quota OR if Codex is valid and Gemini isn't
+                if (not gemini_ok or gemini_quota_issue) and codex_ok and not codex_quota_issue:
+                    score_filename = "codex.json"
+                    if gemini_quota_issue:
+                        notes.append("Used Codex fallback (Gemini quota)")
+                    else:
+                        notes.append("Used Codex fallback")
+                elif codex_quota_issue:
+                    notes.append("Warning: Both providers hit quota limits")
+            gemini_eval = parse_gemini_evaluation(
+                Path(artifacts_dir), logger, filename=score_filename
+            )
             score_value = gemini_eval.get("final_score")
             if score_value is None:
                 score_value = parse_score(
-                    Path(artifacts_dir), args.score_file, args.score_key, logger
+                    Path(artifacts_dir), score_filename, args.score_key, logger
                 )
 
             # Use Gemini's file_inventory as source of truth (it analyzes the full tree)

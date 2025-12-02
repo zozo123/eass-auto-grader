@@ -49,3 +49,13 @@ student_name,email,repo_url
 ## Output
 
 `results/REPORT.md` - Evaluation report with scores, grades, and recommendations.
+
+## Examples
+
+Sanitized example inputs are provided in the `examples/` folder. These files show expected formats and contain placeholder values only — do not commit real student data. Example files include:
+
+- `examples/submission.csv` — example CSV with anonymized rows.
+- `examples/codex_prompt.example.txt` — Codex prompt template (placeholders).
+- `examples/gemini_prompt.example.txt` — Gemini prompt template (placeholders).
+
+Use these as templates when preparing `submission.csv` or prompt templates for runs.
