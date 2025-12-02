@@ -1,199 +1,126 @@
-# 🎓 EASS Student Project Ranker
+# EASS Student Project Ranker
 
-An automated pipeline for evaluating student FastAPI projects using AI-powered code analysis (Gemini or Codex CLI).
+Automated evaluation pipeline for FastAPI student projects using AI code analysis.
 
-## ✨ Features
+## Overview
 
-- **AI-Powered Analysis**: Uses Gemini CLI (default) or OpenAI Codex CLI for deep code evaluation
-- **10-Dimension Scoring**: Evaluates functional correctness, architecture, code quality, API design, error handling, security, testing, documentation, Docker, dependencies
-- **Deep Analysis Evidence**: Provides specific code-level findings for each score
-- **Detailed Reports**: Generates comprehensive REPORT.md with insights, rankings, and recommendations
-- **Code Formatting Check**: Uses Ruff to analyze code style compliance
-- **Weighted Scoring**: Prioritizes critical dimensions (functional, API, testing at 15% each)
+This tool clones student repositories, runs AI-powered code analysis (Gemini or Codex), and generates ranked evaluation reports with detailed scoring across 10 dimensions.
 
-## 📋 Prerequisites
+## Requirements
 
-### Required Tools
-
-| Tool | Installation | Purpose |
-|------|-------------|---------|
-| **Python 3.12+** | `brew install python@3.12` | Runtime |
-| **uv** | `brew install uv` | Fast Python package manager |
-| **Ruff** | `brew install ruff` | Code formatting checker |
-| **GitHub CLI** | `brew install gh` | Clone student repos |
-| **Gemini CLI** | `brew install gemini-cli` | AI analysis (default) |
-| **Codex CLI** | `npm install -g @openai/codex` | AI analysis (alternative) |
-
-### Authentication
-
-#### For Gemini (default):
-```bash
-# Authenticate with Google
-gemini auth login
+```
+Python 3.12+    brew install python@3.12
+uv              brew install uv
+ruff            brew install ruff
+gh              brew install gh
+gemini-cli      brew install gemini-cli
 ```
 
-#### For Codex (alternative):
+**Authentication:**
 ```bash
-# Set OpenAI API key
-export OPENAI_API_KEY="your-api-key"
+gemini auth login                      # For Gemini
+export OPENAI_API_KEY="your-key"       # For Codex
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
-### 1. Clone the repository
 ```bash
 git clone https://github.com/zozo123/ranker-eass.git
 cd ranker-eass
-```
-
-### 2. Install dependencies
-```bash
 uv sync
+cp submission.csv.example submission.csv   # Add your data
+./run.sh --limit 5                         # Test run
+./run.sh                                   # Full run
 ```
 
-### 3. Prepare your submission file
-Create a `submission.csv` with student data:
+## Input Format
+
+`submission.csv` (you create this):
 ```csv
 student_name,email,repo_url
-"John Doe",john@example.com,https://github.com/org/student-project
-"Jane Smith",jane@example.com,https://github.com/org/another-project
+"John Doe",john@example.com,https://github.com/org/project
 ```
 
-### 4. Run the evaluation
-
-**Using Gemini (default):**
-```bash
-./run.sh --limit 5      # Test with 5 submissions
-./run.sh                # Run all submissions
-```
-
-**Using Codex:**
-```bash
-./run.sh --ai codex --limit 5
-```
-
-## 📁 Project Structure
-
-```
-ranker-eass/
-├── run.sh                    # Main entry point
-├── Makefile                  # Convenience commands
-├── scripts/
-│   ├── run_evaluation.py     # Core evaluation pipeline
-│   └── run_evaluation_parallel.py  # Parallel execution
-├── gemini_prompt.txt         # Gemini AI evaluation prompt
-├── codex_prompt.txt          # Codex AI evaluation prompt
-├── evaluation_schema.json    # JSON schema for evaluation
-├── pyproject.toml            # Python dependencies
-└── submission.csv            # Student submissions (YOU CREATE THIS)
-```
-
-### Generated Outputs (gitignored)
-
-```
-work/                         # Cloned repos & artifacts
-├── {student_slug}/
-│   ├── artifacts/
-│   │   ├── gemini.json      # AI evaluation results
-│   │   ├── ruff_stats.json  # Code formatting stats
-│   │   └── tree.txt         # Repo structure
-│   └── repo/                # Cloned student repo
-
-results/                      # Final outputs
-├── REPORT.md                # Comprehensive report
-├── evaluation.json          # Raw JSON data
-├── ranked_list.csv          # Sortable rankings
-└── index.md                 # Quick overview
-
-logs/
-└── pipeline.log             # Execution logs
-```
-
-## 🎯 CLI Options
+## Usage
 
 ```bash
 ./run.sh [OPTIONS]
 
-Options:
-  --ai <gemini|codex>   AI provider to use (default: gemini)
-  --limit N             Process only first N submissions
-  --timeout S           Timeout per command in seconds (default: 300)
-  --no-clean            Don't clean work directory before starting
-  -h, --help            Show help
+--ai <gemini|codex>   AI provider (default: gemini)
+--limit N             Process first N submissions
+--timeout S           Timeout per command (default: 300s)
+--no-clean            Keep work directory
 ```
 
-## 📊 Evaluation Dimensions
-
-| Dimension | Weight | What It Measures |
-|-----------|--------|------------------|
-| **Functional Correctness** | 15% | Does the API work? CRUD complete? |
-| **API Design** | 15% | RESTful? Proper status codes? Validation? |
-| **Test Quality** | 15% | Test coverage? Isolation? Error cases? |
-| **Architecture** | 10% | Separation of concerns? Patterns? |
-| **Code Quality** | 10% | Type hints? Clean code? DRY? |
-| **Error Handling** | 10% | HTTPException? Edge cases? |
-| **Security** | 10% | Secrets exposed? Env vars? |
-| **Documentation** | 5% | README? Setup instructions? |
-| **Docker** | 5% | Dockerfile? Best practices? |
-| **Dependencies** | 5% | Pinned versions? Lock file? |
-
-## 🔧 Makefile Commands
-
+**Makefile shortcuts:**
 ```bash
-make run          # Run evaluation (5 submissions)
-make run-all      # Run all submissions
-make run-limit N=10  # Run with custom limit
-make clean        # Clean work directory
-make clean-all    # Clean work + results + logs
-make format       # Format Python code with ruff
-make lint         # Lint Python code
+make run              # 5 submissions
+make run-all          # All submissions  
+make run-codex        # Use Codex
+make clean            # Clean work/
+make format           # Format code
 ```
 
-## 📝 Sample Output
+## Project Structure
 
-### REPORT.md Preview
-
-```markdown
-## 🏆 Final Rankings
-
-| Rank | Student | Score | Grade | Format | Docker | Tests |
-|------|---------|-------|-------|--------|--------|-------|
-| 1 | 🥇 Alice Smith | 8.5 | A | 100% | ✅ | ✅ |
-| 2 | 🥈 Bob Jones | 7.8 | B | 85% | ✅ | ✅ |
+```
+ranker-eass/
+├── run.sh                 # Entry point
+├── Makefile               # Build commands
+├── scripts/
+│   ├── run_evaluation.py  # Main pipeline
+│   └── run_evaluation_parallel.py
+├── gemini_prompt.txt      # AI prompt
+├── codex_prompt.txt       # AI prompt (Codex)
+├── submission.csv.example # Template
+└── pyproject.toml         # Dependencies
 ```
 
-### Deep Analysis Evidence
-
-Each submission gets detailed evidence for scores:
+**Generated (gitignored):**
 ```
-**Functional Correctness:** 8/10
-- Endpoints Found: 5
-- CRUD Completeness: full
-- Would Run: ✅ Yes
-- Evidence: "Complete CRUD with proper status codes (201, 204)"
+work/{student}/artifacts/  # AI output, ruff stats
+work/{student}/repo/       # Cloned code
+results/REPORT.md          # Final report
+results/evaluation.json    # Raw scores
+results/ranked_list.csv    # Rankings
+logs/pipeline.log          # Execution log
 ```
 
-## 🔒 Security Notes
+## Scoring
 
-⚠️ **Important**: The following files contain sensitive data and are **gitignored**:
+| Dimension              | Weight |
+|------------------------|--------|
+| Functional Correctness | 15%    |
+| API Design             | 15%    |
+| Test Quality           | 15%    |
+| Architecture           | 10%    |
+| Code Quality           | 10%    |
+| Error Handling         | 10%    |
+| Security               | 10%    |
+| Documentation          | 5%     |
+| Docker                 | 5%     |
+| Dependencies           | 5%     |
 
-- `submission.csv` - Contains student PII (names, emails)
-- `work/` - Contains cloned student repositories
-- `results/` - Contains evaluation data with student info
-- `logs/` - May contain sensitive paths
+**Grades:** A (9-10), B (8-9), C (7-8), D (6-7), F (<6)
 
-**Never commit:**
-- API keys or credentials
-- `.env` files
-- Student personal information
+## Output
 
-## 📄 License
+Each submission receives:
+- Numeric scores (0-10) per dimension
+- Deep analysis evidence with code references
+- Issues categorized by severity
+- Actionable improvement recommendations
 
-MIT License
+## Security
 
-## 🤝 Contributing
+**Gitignored (contains PII):**
+- `submission.csv` - student names/emails
+- `work/` - cloned repositories
+- `results/` - evaluation data
+- `logs/` - execution logs
 
-1. Fork the repository
-2. Create a feature branch
-3. Run `make format && make lint`
-4. Submit a pull request
+**Never commit:** API keys, `.env` files, student data.
+
+## License
+
+MIT

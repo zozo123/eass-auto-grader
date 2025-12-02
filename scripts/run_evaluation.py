@@ -558,14 +558,14 @@ def generate_report(entries: List[Dict[str, Any]], results_dir: Path) -> None:
     )
 
     lines = [
-        "# 📊 EASS Student Project Evaluation Report",
+        "# EASS Student Project Evaluation Report",
         "",
         f"**Generated:** {now.strftime('%Y-%m-%d %H:%M:%S')} UTC",
         f"**Total Submissions:** {total}",
         "",
         "---",
         "",
-        "## 📈 Executive Summary",
+        "## Executive Summary",
         "",
         "| Metric | Value |",
         "|--------|-------|",
@@ -577,14 +577,14 @@ def generate_report(entries: List[Dict[str, Any]], results_dir: Path) -> None:
         "",
         "---",
         "",
-        "## 🎨 Code Formatting Analysis (Ruff)",
+        "## Code Formatting Analysis (Ruff)",
         "",
         "| Status | Count | Description |",
         "|--------|-------|-------------|",
-        f"| ✅ Perfect | {perfect_format} | All files properly formatted |",
-        f"| 🟢 Good | {good_format} | ≥80% files formatted |",
-        f"| 🟡 Needs Work | {needs_work_format} | 50-79% files formatted |",
-        f"| 🔴 Poor | {poor_format} | <50% files formatted |",
+        f"| Perfect | {perfect_format} | All files properly formatted |",
+        f"| Good | {good_format} | >=80% files formatted |",
+        f"| Needs Work | {needs_work_format} | 50-79% files formatted |",
+        f"| Poor | {poor_format} | <50% files formatted |",
         "",
         "### Detailed Format Stats",
         "",
@@ -599,11 +599,11 @@ def generate_report(entries: List[Dict[str, Any]], results_dir: Path) -> None:
             total_f = stats.get("total_files", 0)
             ratio = stats.get("format_ratio", 0)
             status_icon = {
-                "perfect": "✅",
-                "good": "🟢",
-                "needs_work": "🟡",
-                "poor": "🔴",
-            }.get(stats.get("status", ""), "❓")
+                "perfect": "OK",
+                "good": "Good",
+                "needs_work": "Fair",
+                "poor": "Poor",
+            }.get(stats.get("status", ""), "-")
             lines.append(
                 f"| {entry['student_name']} | {ok} | {total_f} | {ratio}% | {status_icon} |"
             )
@@ -622,7 +622,7 @@ def generate_report(entries: List[Dict[str, Any]], results_dir: Path) -> None:
             "",
             "---",
             "",
-            "## 📁 Project Structure Analysis",
+            "## Project Structure Analysis",
             "",
             "Essential files and directories check:",
             "",
@@ -648,14 +648,14 @@ def generate_report(entries: List[Dict[str, Any]], results_dir: Path) -> None:
         for name, missing in missing_files_entries:
             lines.append(f"- **{name}**: Missing {', '.join(missing)}")
     else:
-        lines.append("*All students have all essential files! 🎉*")
+        lines.append("*All students have all essential files.*")
 
     lines.extend(
         [
             "",
             "---",
             "",
-            "## 📊 Score Distribution",
+            "## Score Distribution",
             "",
             "```",
             f"10 (Excellent) : {'█' * score_10} {score_10}",
@@ -668,7 +668,7 @@ def generate_report(entries: List[Dict[str, Any]], results_dir: Path) -> None:
             "",
             "---",
             "",
-            "## 📈 Detailed Score Breakdown by Category",
+            "## Detailed Score Breakdown by Category",
             "",
             "Average scores across all submissions:",
             "",
@@ -709,7 +709,7 @@ def generate_report(entries: List[Dict[str, Any]], results_dir: Path) -> None:
         [
             "---",
             "",
-            "## 🏆 Final Rankings",
+            "## Final Rankings",
             "",
             "| Rank | Student | Score | Grade | Format | Docker | Tests | Status |",
             "|------|---------|-------|-------|--------|--------|-------|--------|",
@@ -728,21 +728,15 @@ def generate_report(entries: List[Dict[str, Any]], results_dir: Path) -> None:
             else "N/A"
         )
         status_icon = {
-            "pass": "✅",
-            "tool_failed": "⚠️",
-            "clone_failed": "❌",
-            "needs_attention": "🟡",
-        }.get(entry["status"], "❓")
-        docker_icon = "✅" if file_inv.get("has_dockerfile") else "❌"
-        tests_icon = "✅" if file_inv.get("has_tests_dir") else "❌"
+            "pass": "OK",
+            "tool_failed": "WARN",
+            "clone_failed": "FAIL",
+            "needs_attention": "ATTN",
+        }.get(entry["status"], "-")
+        docker_icon = "Y" if file_inv.get("has_dockerfile") else "N"
+        tests_icon = "Y" if file_inv.get("has_tests_dir") else "N"
 
         medal = ""
-        if rank == 1:
-            medal = "🥇 "
-        elif rank == 2:
-            medal = "🥈 "
-        elif rank == 3:
-            medal = "🥉 "
 
         lines.append(
             f"| {rank} | {medal}{entry['student_name']} | {entry['score']:.1f} | {pf_grade.get('grade', '-')} | {format_str} | {docker_icon} | {tests_icon} | {status_icon} |"
@@ -753,7 +747,7 @@ def generate_report(entries: List[Dict[str, Any]], results_dir: Path) -> None:
             "",
             "---",
             "",
-            "## 📝 Detailed Results",
+            "## Detailed Results",
             "",
         ]
     )
@@ -810,7 +804,7 @@ def generate_report(entries: List[Dict[str, Any]], results_dir: Path) -> None:
             lines.append("")
             lines.append("<details>")
             lines.append(
-                "<summary><b>🔍 Deep Analysis Evidence</b> (click to expand)</summary>"
+                "<summary><b>Deep Analysis Evidence</b> (click to expand)</summary>"
             )
             lines.append("")
             for key, label in score_categories:
@@ -821,7 +815,7 @@ def generate_report(entries: List[Dict[str, Any]], results_dir: Path) -> None:
                     for field, value in da.items():
                         if field != "score" and field != "evidence":
                             if isinstance(value, bool):
-                                value = "✅ Yes" if value else "❌ No"
+                                value = "Yes" if value else "No"
                             lines.append(
                                 f"- {field.replace('_', ' ').title()}: {value}"
                             )
@@ -848,13 +842,13 @@ def generate_report(entries: List[Dict[str, Any]], results_dir: Path) -> None:
             lines.append("")
             lines.append("**Strengths:**")
             for s in ge["strengths"][:3]:
-                lines.append(f"- ✅ {s}")
+                lines.append(f"- {s}")
 
         if ge.get("improvements"):
             lines.append("")
             lines.append("**Areas for Improvement:**")
             for i in ge["improvements"][:3]:
-                lines.append(f"- 💡 {i}")
+                lines.append(f"- {i}")
 
         # Issues
         if ge.get("issues"):
@@ -864,9 +858,9 @@ def generate_report(entries: List[Dict[str, Any]], results_dir: Path) -> None:
                 lines.append("")
                 lines.append("**Issues Found:**")
                 for issue in (critical + major)[:3]:
-                    icon = "🔴" if issue.get("severity") == "critical" else "🟠"
+                    severity = issue.get("severity", "major").upper()
                     lines.append(
-                        f"- {icon} [{issue.get('category', 'general')}] {issue.get('description', '')}"
+                        f"- [{severity}] [{issue.get('category', 'general')}] {issue.get('description', '')}"
                     )
 
         if entry.get("notes"):
@@ -880,7 +874,7 @@ def generate_report(entries: List[Dict[str, Any]], results_dir: Path) -> None:
     lines.extend(
         [
             "",
-            "## 🔧 Methodology",
+            "## Methodology",
             "",
             "### Evaluation Criteria",
             "Projects were evaluated on 10 dimensions:",
@@ -924,7 +918,7 @@ def write_index(entries: List[Dict[str, Any]], results_dir: Path) -> None:
         "",
         f"Generated on {now} UTC",
         "",
-        "📊 See [REPORT.md](REPORT.md) for detailed analysis",
+        "See [REPORT.md](REPORT.md) for detailed analysis",
         "",
         "| Rank | Student | Email | Score | Normalized | Format | Files | Status | Notes |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
@@ -1358,7 +1352,7 @@ def main() -> None:
     write_index(results, results_dir)
     generate_report(results, results_dir)
 
-    logger.info("✅ Pipeline complete! See results/REPORT.md for detailed analysis.")
+    logger.info("Pipeline complete. See results/REPORT.md for detailed analysis.")
 
 
 if __name__ == "__main__":

@@ -1,19 +1,16 @@
 #!/bin/bash
-# E2E Evaluation Pipeline - Comprehensive Project Evaluation
-# Supports: Gemini CLI (default) or OpenAI Codex CLI
-# Uses: uv, ruff, tree
+# EASS Student Project Evaluator
+# Supports: Gemini CLI (default) or Codex CLI
 
 set -e
 
 cd "$(dirname "$0")"
 
-# Default values
 LIMIT=""
 TIMEOUT=300
 NO_CLEAN=""
 AI_PROVIDER="gemini"
 
-# Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
         --ai)
@@ -40,16 +37,15 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: ./run.sh [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --ai <gemini|codex>  AI provider to use (default: gemini)"
-            echo "  --limit N            Process only first N submissions"
-            echo "  --timeout S          Timeout per command in seconds (default: 300)"
-            echo "  --no-clean           Don't clean work directory before starting"
+            echo "  --ai <gemini|codex>  AI provider (default: gemini)"
+            echo "  --limit N            Process first N submissions"
+            echo "  --timeout S          Timeout per command (default: 300)"
+            echo "  --no-clean           Keep work directory"
             echo "  -h, --help           Show this help"
             echo ""
             echo "Examples:"
-            echo "  ./run.sh --limit 5              # Test with 5 submissions using Gemini"
-            echo "  ./run.sh --ai codex --limit 5   # Use Codex instead"
-            echo "  ./run.sh                        # Run all submissions"
+            echo "  ./run.sh --limit 5"
+            echo "  ./run.sh --ai codex --limit 5"
             exit 0
             ;;
         *)
@@ -59,7 +55,6 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Set up AI-specific configuration
 if [[ "$AI_PROVIDER" == "gemini" ]]; then
     PROMPT_FILE="$(pwd)/gemini_prompt.txt"
     AI_COMMAND="cat \"$PROMPT_FILE\" | gemini --include-directories \"{repo_dir}\" --output-format json > \"{artifacts_dir}/gemini.json\""
@@ -73,15 +68,12 @@ else
 fi
 
 echo ""
-echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║           🎓 EASS Student Project Evaluator v2.0             ║"
-echo "╠══════════════════════════════════════════════════════════════╣"
-echo "║  AI Provider: ${AI_PROVIDER}                                         ║"
-echo "║  Tools: uv · ruff · ${AI_TOOL} · tree                            ║"
-echo "║  Timeout: ${TIMEOUT}s per command                                  ║"
-[ -n "$LIMIT" ] && echo "║  Limit: first ${LIMIT#--limit } submissions                               ║"
-[ -z "$NO_CLEAN" ] && echo "║  Clean: work directory will be cleaned                        ║"
-echo "╚══════════════════════════════════════════════════════════════╝"
+echo "EASS Student Project Evaluator"
+echo "=============================="
+echo "Provider: ${AI_PROVIDER}"
+echo "Timeout:  ${TIMEOUT}s"
+[ -n "$LIMIT" ] && echo "Limit:    ${LIMIT#--limit }"
+[ -z "$NO_CLEAN" ] && echo "Clean:    yes"
 echo ""
 
 uv run python scripts/run_evaluation.py \
@@ -96,15 +88,9 @@ uv run python scripts/run_evaluation.py \
     --timeout-seconds "$TIMEOUT"
 
 echo ""
-echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║                    ✅ Pipeline Complete!                     ║"
-echo "╠══════════════════════════════════════════════════════════════╣"
-echo "║  📊 REPORT.md       - Full analysis with insights            ║"
-echo "║  📋 index.md        - Quick ranking overview                 ║"
-echo "║  📈 ranked_list.csv - Sortable spreadsheet data              ║"
-echo "║  📁 evaluation.json - Raw data for processing                ║"
-echo "║  🔍 ${SCORE_FILE}     - Detailed AI evaluation per project     ║"
-echo "╚══════════════════════════════════════════════════════════════╝"
-echo ""
-echo "👉 Open results/REPORT.md for the detailed report"
+echo "Complete. Results:"
+echo "  results/REPORT.md       - Full analysis"
+echo "  results/index.md        - Ranking overview"
+echo "  results/ranked_list.csv - Spreadsheet data"
+echo "  results/evaluation.json - Raw JSON data"
 echo ""
