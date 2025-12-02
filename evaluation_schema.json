@@ -1,0 +1,195 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EASS Project Evaluation Schema",
+  "description": "Comprehensive evaluation schema for student FastAPI projects",
+  "type": "object",
+  "required": ["repo_name", "summary", "scores", "final_score", "pass_fail"],
+  "properties": {
+    "repo_name": {
+      "type": "string",
+      "description": "Name of the repository being evaluated"
+    },
+    "summary": {
+      "type": "string",
+      "description": "Brief 2-3 sentence summary of the project and its purpose"
+    },
+    "scores": {
+      "type": "object",
+      "description": "Detailed scores for each evaluation category (0-10 scale)",
+      "properties": {
+        "functional_correctness": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Does the code work? Are API endpoints functional? Error handling present?"
+        },
+        "architecture_design": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Project structure, separation of concerns, use of design patterns"
+        },
+        "code_quality": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Readability, naming conventions, DRY principles, type hints"
+        },
+        "api_design": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "RESTful practices, proper HTTP methods, status codes, request/response models"
+        },
+        "error_handling": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Exception handling, validation, meaningful error messages"
+        },
+        "security_practices": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Input validation, SQL injection prevention, secrets management, CORS"
+        },
+        "test_quality": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Test presence, coverage, quality of test cases, edge cases"
+        },
+        "documentation": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "README quality, API docs, inline comments, docstrings"
+        },
+        "docker_containerization": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Dockerfile quality, multi-stage builds, .dockerignore, compose files"
+        },
+        "dependency_management": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "requirements.txt/pyproject.toml, version pinning, appropriate packages"
+        }
+      },
+      "required": [
+        "functional_correctness",
+        "architecture_design", 
+        "code_quality",
+        "api_design",
+        "error_handling",
+        "security_practices",
+        "test_quality",
+        "documentation",
+        "docker_containerization",
+        "dependency_management"
+      ]
+    },
+    "final_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 10,
+      "description": "Weighted average final score (0-10)"
+    },
+    "project_type": {
+      "type": "string",
+      "description": "What kind of project is this? (e.g., 'Book Catalog API', 'Task Manager', etc.)"
+    },
+    "tech_stack": {
+      "type": "object",
+      "description": "Technologies detected in the project",
+      "properties": {
+        "framework": {
+          "type": "string",
+          "description": "Main framework (FastAPI, Flask, Django, etc.)"
+        },
+        "database": {
+          "type": "string",
+          "description": "Database used (SQLite, PostgreSQL, MongoDB, etc.) or 'none'"
+        },
+        "orm": {
+          "type": "string",
+          "description": "ORM if any (SQLAlchemy, Tortoise, etc.) or 'none'"
+        },
+        "testing_framework": {
+          "type": "string",
+          "description": "Testing framework (pytest, unittest, etc.) or 'none'"
+        },
+        "other_tools": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Other notable tools/libraries"
+        }
+      }
+    },
+    "file_inventory": {
+      "type": "object",
+      "description": "Key files present/missing",
+      "properties": {
+        "has_readme": {"type": "boolean"},
+        "has_dockerfile": {"type": "boolean"},
+        "has_docker_compose": {"type": "boolean"},
+        "has_gitignore": {"type": "boolean"},
+        "has_requirements": {"type": "boolean"},
+        "has_pyproject": {"type": "boolean"},
+        "has_tests_dir": {"type": "boolean"},
+        "has_ci_cd": {"type": "boolean"},
+        "main_app_file": {"type": "string", "description": "Path to main app entry point"},
+        "config_files": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "code_metrics": {
+      "type": "object",
+      "description": "Quantitative code metrics",
+      "properties": {
+        "total_python_files": {"type": "integer"},
+        "total_lines_of_code": {"type": "integer"},
+        "total_test_files": {"type": "integer"},
+        "num_api_endpoints": {"type": "integer"},
+        "num_pydantic_models": {"type": "integer"},
+        "num_database_models": {"type": "integer"},
+        "estimated_test_coverage_percent": {"type": "integer", "minimum": 0, "maximum": 100}
+      }
+    },
+    "issues": {
+      "type": "array",
+      "description": "List of issues/problems found",
+      "items": {
+        "type": "object",
+        "properties": {
+          "severity": {"type": "string", "enum": ["critical", "major", "minor", "suggestion"]},
+          "category": {"type": "string"},
+          "description": {"type": "string"},
+          "file": {"type": "string"},
+          "line": {"type": "integer"}
+        },
+        "required": ["severity", "category", "description"]
+      }
+    },
+    "strengths": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Notable positive aspects of the project"
+    },
+    "improvements": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Suggested improvements"
+    },
+    "pass_fail": {
+      "type": "object",
+      "properties": {
+        "passed": {"type": "boolean"},
+        "grade": {"type": "string", "enum": ["A", "B", "C", "D", "F"]},
+        "reason": {"type": "string"}
+      },
+      "required": ["passed", "grade", "reason"]
+    }
+  }
+}
