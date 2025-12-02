@@ -1,38 +1,28 @@
-TASK: Evaluate this FastAPI/Python student project and output JSON.
+Evaluate this student project and return JSON only.
 
-You are a senior code reviewer. Analyze the code thoroughly and return your evaluation as a SINGLE JSON object.
+REQUIREMENTS:
+- Backend MUST use FastAPI (not Flask). Penalize Flask usage.
+- Frontend (if exists) MUST use JavaScript or Python Streamlit only.
+- Full CRUD API with proper HTTP methods and status codes.
+- Tests with pytest. Docker containerization required.
 
-IMPORTANT: Do NOT use any tools. Just read the files with --include-directories and output your JSON evaluation directly.
+SCORING (0-10, strict):
+1. functional_correctness (15%) - CRUD works, correct status codes
+2. api_design (15%) - RESTful, validation, response models
+3. test_quality (15%) - pytest coverage, isolation, error cases
+4. architecture_design (10%) - separation of concerns, repository pattern
+5. code_quality (10%) - type hints, docstrings, DRY
+6. error_handling (10%) - HTTPException, edge cases
+7. security_practices (10%) - no secrets in code, env vars
+8. documentation (5%) - README, setup instructions
+9. docker_containerization (5%) - Dockerfile, compose, best practices
+10. dependency_management (5%) - requirements.txt/pyproject.toml, pinned versions
 
-═══════════════════════════════════════════════════════════════════════════════
-WHAT TO CHECK (Read ALL files carefully)
-═══════════════════════════════════════════════════════════════════════════════
-
-1. FUNCTIONAL CORRECTNESS - Does it work? CRUD complete? Correct status codes?
-2. ARCHITECTURE - Good structure? Separation of concerns? Repository pattern?
-3. CODE QUALITY - Type hints? Docstrings? Clean code? DRY?
-4. API DESIGN - RESTful? Proper HTTP methods? Validation? Pagination?
-5. ERROR HANDLING - HTTPException? Custom handlers? Edge cases?
-6. SECURITY - No secrets in code? Env vars? Input validation?
-7. TESTING - Tests exist? Good coverage? Test isolation? Error cases tested?
-8. DOCUMENTATION - README? Setup instructions? API docs?
-9. DOCKER - Dockerfile exists? Multi-stage? docker-compose? Best practices?
-10. DEPENDENCIES - requirements.txt or pyproject.toml? Versions pinned?
-
-═══════════════════════════════════════════════════════════════════════════════
-SCORING (0-10 scale, be strict and consistent)
-═══════════════════════════════════════════════════════════════════════════════
-10=Exceptional, 9=Excellent, 8=Very Good, 7=Good, 6=Satisfactory, 5=Marginal, 4=Below Avg, 3=Poor, 2=Very Poor, 1=Minimal, 0=Missing
-
-═══════════════════════════════════════════════════════════════════════════════
-OUTPUT FORMAT - Return ONLY this JSON (no markdown, no extra text)
-═══════════════════════════════════════════════════════════════════════════════
-
+OUTPUT (JSON only, no markdown):
 {
-  "repo_name": "<project name>",
-  "summary": "<2-3 sentences: what it does>",
-  "project_type": "<e.g., Book Catalog API, Task Manager>",
-  
+  "repo_name": "<name>",
+  "summary": "<what it does>",
+  "project_type": "<type>",
   "scores": {
     "functional_correctness": <0-10>,
     "architecture_design": <0-10>,
@@ -45,109 +35,45 @@ OUTPUT FORMAT - Return ONLY this JSON (no markdown, no extra text)
     "docker_containerization": <0-10>,
     "dependency_management": <0-10>
   },
-  
-  "final_score": <weighted avg: functional 15%, api 15%, testing 15%, arch 10%, code 10%, error 10%, security 10%, docs 5%, docker 5%, deps 5%>,
-  
+  "final_score": <weighted average>,
   "deep_analysis": {
-    "functional_correctness": {
-      "score": <0-10>,
-      "endpoints_found": <count>,
-      "crud_completeness": "<full/partial/minimal>",
-      "would_run": <true/false>,
-      "evidence": "<brief evidence>"
-    },
-    "architecture_design": {
-      "score": <0-10>,
-      "pattern": "<repository/direct/mixed>",
-      "separation_of_concerns": "<excellent/good/poor>",
-      "evidence": "<brief evidence>"
-    },
-    "code_quality": {
-      "score": <0-10>,
-      "type_hints": "<full/partial/none>",
-      "docstrings": "<yes/some/none>",
-      "evidence": "<brief evidence>"
-    },
-    "api_design": {
-      "score": <0-10>,
-      "restful": <true/false>,
-      "response_models": <true/false>,
-      "validation": "<strong/basic/none>",
-      "evidence": "<brief evidence>"
-    },
-    "error_handling": {
-      "score": <0-10>,
-      "http_exceptions": <true/false>,
-      "edge_cases": "<handled/partial/missing>",
-      "evidence": "<brief evidence>"
-    },
-    "security_practices": {
-      "score": <0-10>,
-      "secrets_exposed": <true/false>,
-      "env_vars_used": <true/false>,
-      "evidence": "<brief evidence>"
-    },
-    "test_quality": {
-      "score": <0-10>,
-      "test_count": <number>,
-      "test_isolation": <true/false>,
-      "error_cases_tested": <true/false>,
-      "evidence": "<brief evidence>"
-    },
-    "documentation": {
-      "score": <0-10>,
-      "readme_quality": "<comprehensive/basic/minimal/none>",
-      "setup_instructions": <true/false>,
-      "evidence": "<brief evidence>"
-    },
-    "docker_containerization": {
-      "score": <0-10>,
-      "dockerfile_exists": <true/false>,
-      "docker_compose": <true/false>,
-      "best_practices": "<excellent/good/basic/poor>",
-      "evidence": "<brief evidence>"
-    },
-    "dependency_management": {
-      "score": <0-10>,
-      "tool": "<uv/poetry/pip/none>",
-      "versions_pinned": <true/false>,
-      "evidence": "<brief evidence>"
-    }
+    "functional_correctness": {"score": <0-10>, "endpoints_found": <n>, "crud_completeness": "<full/partial/minimal>", "would_run": <bool>, "evidence": "<text>"},
+    "architecture_design": {"score": <0-10>, "pattern": "<repository/direct/mixed>", "separation_of_concerns": "<excellent/good/poor>", "evidence": "<text>"},
+    "code_quality": {"score": <0-10>, "type_hints": "<full/partial/none>", "docstrings": "<yes/some/none>", "evidence": "<text>"},
+    "api_design": {"score": <0-10>, "restful": <bool>, "response_models": <bool>, "validation": "<strong/basic/none>", "evidence": "<text>"},
+    "error_handling": {"score": <0-10>, "http_exceptions": <bool>, "edge_cases": "<handled/partial/missing>", "evidence": "<text>"},
+    "security_practices": {"score": <0-10>, "secrets_exposed": <bool>, "env_vars_used": <bool>, "evidence": "<text>"},
+    "test_quality": {"score": <0-10>, "test_count": <n>, "test_isolation": <bool>, "error_cases_tested": <bool>, "evidence": "<text>"},
+    "documentation": {"score": <0-10>, "readme_quality": "<comprehensive/basic/minimal/none>", "setup_instructions": <bool>, "evidence": "<text>"},
+    "docker_containerization": {"score": <0-10>, "dockerfile_exists": <bool>, "docker_compose": <bool>, "best_practices": "<excellent/good/basic/poor>", "evidence": "<text>"},
+    "dependency_management": {"score": <0-10>, "tool": "<uv/poetry/pip/none>", "versions_pinned": <bool>, "evidence": "<text>"}
   },
-  
   "tech_stack": {
-    "framework": "<FastAPI/Flask>",
+    "framework": "<FastAPI/Flask/other>",
+    "frontend": "<none/javascript/streamlit/other>",
     "database": "<SQLite/PostgreSQL/none>",
     "orm": "<SQLAlchemy/SQLModel/none>",
     "testing_framework": "<pytest/none>"
   },
-  
   "file_inventory": {
-    "has_readme": <true/false>,
-    "has_dockerfile": <true/false>,
-    "has_docker_compose": <true/false>,
-    "has_gitignore": <true/false>,
-    "has_requirements": <true/false>,
-    "has_pyproject": <true/false>,
-    "has_tests_dir": <true/false>
+    "has_readme": <bool>,
+    "has_dockerfile": <bool>,
+    "has_docker_compose": <bool>,
+    "has_gitignore": <bool>,
+    "has_requirements": <bool>,
+    "has_pyproject": <bool>,
+    "has_tests_dir": <bool>
   },
-  
-  "code_metrics": {
-    "total_python_files": <count>,
-    "total_test_files": <count>,
-    "num_api_endpoints": <count>
-  },
-  
-  "issues": [
-    {"severity": "critical/major/minor", "category": "<category>", "description": "<issue>"}
-  ],
-  
-  "strengths": ["<strength 1>", "<strength 2>", "<strength 3>"],
-  "improvements": ["<improvement 1>", "<improvement 2>", "<improvement 3>"],
-  
-  "pass_fail": {
-    "passed": <true if final_score >= 6.0>,
-    "grade": "<A/B/C/D/F>",
-    "reason": "<brief justification>"
+  "code_metrics": {"total_python_files": <n>, "total_test_files": <n>, "num_api_endpoints": <n>},
+  "issues": [{"severity": "<critical/major/minor>", "category": "<category>", "description": "<text>"}],
+  "strengths": ["<str1>", "<str2>", "<str3>"],
+  "improvements": ["<imp1>", "<imp2>", "<imp3>"],
+  "pass_fail": {"passed": <bool>, "grade": "<A/B/C/D/F>", "reason": "<text>"},
+  "framework_compliance": {
+    "uses_fastapi": <bool>,
+    "uses_flask": <bool>,
+    "frontend_tech": "<none/javascript/streamlit/other>",
+    "penalty_applied": <bool>,
+    "penalty_reason": "<text or null>"
   }
 }
