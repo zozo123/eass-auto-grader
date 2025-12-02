@@ -1224,7 +1224,12 @@ def write_index(entries: List[Dict[str, Any]], results_dir: Path) -> None:
 
 
 def apply_normalization(entries: List[Dict[str, Any]]) -> None:
-    """Scale scores into [85, 100] for non-terrible submissions; mark terrible as 0."""
+    """Scale scores into configurable range for non-terrible submissions; mark terrible as 0."""
+    # Get scale from environment (default 87-99)
+    scale_min = float(os.environ.get("SCORE_SCALE_MIN", 87))
+    scale_max = float(os.environ.get("SCORE_SCALE_MAX", 99))
+    scale_range = scale_max - scale_min
+    
     non_terrible = [
         entry
         for entry in entries
@@ -1243,11 +1248,11 @@ def apply_normalization(entries: List[Dict[str, Any]]) -> None:
         if is_terrible:
             normalized = 0.0
         elif max_score == min_score:
-            normalized = 100.0
+            normalized = scale_max
         else:
             ratio = (raw - min_score) / (max_score - min_score)
-            normalized = 85.0 + ratio * 15.0
-            normalized = max(85.0, min(100.0, normalized))
+            normalized = scale_min + ratio * scale_range
+            normalized = max(scale_min, min(scale_max, normalized))
         entry["normalized_score"] = round(normalized, 2)
         entry["normalized_percentage"] = round(normalized, 2)
 
