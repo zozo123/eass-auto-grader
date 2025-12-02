@@ -2,23 +2,28 @@
 
 Automated grading pipeline for FastAPI student projects.
 
-## Requirements
+## Setup
 
-- Python 3.12+, uv, ruff, gh CLI, gemini-cli
-- `gemini auth login` for authentication
+```bash
+brew install python@3.12 uv ruff gh
+brew install gemini-cli && gemini auth login    # Gemini
+brew install codex && codex login               # Codex (alternative)
+```
 
 ## Usage
 
 ```bash
 git clone https://github.com/zozo123/eass-auto-grader.git && cd eass-auto-grader
 uv sync
-cp submission.csv.example submission.csv  # Add student data
-./run.sh --limit 5                        # Test run
-./run.sh                                  # Full run
+cp submission.csv.example submission.csv   # Add student data
+./run.sh --limit 5                         # Test run
+./run.sh                                   # Full run
+./run.sh --ai codex                        # Use Codex instead
 ```
 
-## Input: submission.csv
+## Input
 
+`submission.csv`:
 ```csv
 student_name,email,repo_url
 "John Doe",john@example.com,https://github.com/org/repo
@@ -26,26 +31,21 @@ student_name,email,repo_url
 
 ## Grading Criteria
 
-| Dimension | Weight | Required |
-|-----------|--------|----------|
-| Functional Correctness | 15% | FastAPI backend |
-| API Design | 15% | RESTful, validation |
-| Test Quality | 15% | pytest |
-| Architecture | 10% | Separation of concerns |
-| Code Quality | 10% | Type hints, docstrings |
-| Error Handling | 10% | HTTPException |
-| Security | 10% | No secrets in code |
-| Documentation | 5% | README |
-| Docker | 5% | Dockerfile |
-| Dependencies | 5% | requirements.txt |
+| Dimension | Weight |
+|-----------|--------|
+| Functional Correctness | 15% |
+| API Design | 15% |
+| Test Quality | 15% |
+| Architecture | 10% |
+| Code Quality | 10% |
+| Error Handling | 10% |
+| Security | 10% |
+| Documentation | 5% |
+| Docker | 5% |
+| Dependencies | 5% |
 
-**Constraints:** Backend must use FastAPI (not Flask). Frontend (if any) must use JavaScript or Streamlit.
+**Requirements:** FastAPI backend (not Flask). Frontend: JavaScript or Streamlit.
 
 ## Output
 
-- `results/REPORT.md` - Full evaluation report
-- `results/ranked_list.csv` - Rankings spreadsheet
-
-## MCP Servers (Gemini)
-
-Configured in `.gemini/settings.json`: filesystem, github
+`results/REPORT.md` - Evaluation report with scores, grades, and recommendations.
