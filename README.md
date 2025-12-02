@@ -42,7 +42,7 @@ export OPENAI_API_KEY="your-api-key"
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/YOUR_USERNAME/ranker-eass.git
+git clone https://github.com/zozo123/ranker-eass.git
 cd ranker-eass
 ```
 
@@ -189,45 +189,11 @@ Each submission gets detailed evidence for scores:
 
 ## 📄 License
 
-MIT License - See LICENSE file for details.
+MIT License
 
 ## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
-3. Make your changes
-4. Run `make format && make lint`
-5. Submit a pull request
-  --format-check \
-  --gemini-command "gemini evaluate {repo_dir} --prompt prompt.md --output {artifacts_dir}/gemini.json" \
-  --score-key final_score
-```
-
-## Quick start (parallel)
-```bash
-uv run python scripts/run_evaluation_parallel.py \
-  --workers 4 \
-  --format-check \
-  --gemini-command "gemini evaluate {repo_dir} --prompt prompt.md --output {artifacts_dir}/gemini.json" \
-  --score-key final_score \
-  --timeout-seconds 300
-```
-
-## Handy flags
-- `--limit N` to test a few rows; `--dry-run` to log only.
-- `--format-command` to swap the formatter (default `python -m ruff format --check .`).
-- `--score-file` / `--score-key` if your LLM JSON shape differs.
-- `--extra-command` to append more tools (pytest, secret scan, etc.).
-- `--timeout-seconds` per step (clone/analysis).
-
-## Outputs
-- Per repo: `work/<slug>/artifacts/` (LLM JSON, `errors.log`), `work/<slug>/reports/` (your feedback).
-- Aggregated: `results/evaluation.json`, `results/ranked_list.csv`, `results/index.md`.
-- Logs: `logs/pipeline.log` (sequential) or `logs/pipeline_parallel.log` (parallel).
-
-## Scoring
-- Reads a numeric score from the LLM JSON (default key `final_score`, capped 0–10).
-- Raw → `final_percentage = raw * 10`.
-- Normalized scores spread non-failing submissions into ~85–100; clone failures or raw ≤ 1.0 get 0.
-
-Keep the same prompt for every repo (`prompt.md`). Failures are marked `tool_failed`, and formatting failures are noted when `--format-check` is used.
+3. Run `make format && make lint`
+4. Submit a pull request
