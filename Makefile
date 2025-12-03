@@ -91,30 +91,36 @@ test:
 compare:
 	@echo "=== Running full comparison analysis ==="
 	@echo ""
-	@echo "Step 1: Basic similarity comparison..."
+	@echo "Step 1: Smart multi-level code embedding analysis..."
+	uv run python scripts/smart_code_embeddings.py --root work --repo-subdir repo --reset
+	@echo ""
+	@echo "Step 2: Basic similarity comparison..."
 	uv run python scripts/compare_repos.py --root work --repo-subdir repo
 	@echo ""
-	@echo "Step 2: Advanced multi-metric comparison..."
+	@echo "Step 3: Advanced multi-metric comparison..."
 	uv run python scripts/compare_repos_v2.py --root work --repo-subdir repo --reset
 	@echo ""
-	@echo "Step 3: Deep 17-dimension analysis..."
+	@echo "Step 4: Deep 17-dimension analysis..."
 	uv run python scripts/deep_analysis.py --root work --repo-subdir repo --reset
 	@echo ""
-	@echo "Step 4: Generating visualizations..."
+	@echo "Step 5: Generating visualizations..."
 	uv run python scripts/visualize_deep_analysis.py
 	@echo ""
-	@echo "Step 5: Responsible similarity analysis..."
+	@echo "Step 6: Responsible similarity analysis..."
 	uv run python scripts/responsible_similarity_analysis.py --root work --repo-subdir repo
 	@echo ""
-	@echo "Step 6: Creativity assessment..."
+	@echo "Step 7: Creativity assessment..."
 	uv run python scripts/creativity_assessment.py --root work --repo-subdir repo
 	@echo ""
-	@echo "Step 7: Generating combined HTML report..."
+	@echo "Step 8: Generating combined HTML report..."
 	uv run python scripts/generate_combined_report.py
 	@echo ""
 	@echo "=== Analysis complete! ==="
 	@echo "Results saved to results/"
 	@echo "Open results/combined_analysis_report.html for full report"
+
+smart-embed:
+	uv run python scripts/smart_code_embeddings.py --root work --repo-subdir repo --reset
 
 compare-quick:
 	uv run python scripts/compare_repos.py --root work --repo-subdir repo
