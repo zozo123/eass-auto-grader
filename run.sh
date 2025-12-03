@@ -34,7 +34,8 @@ GEMINI_CONFIG_DIR="$(pwd)/.gemini"
 GEMINI_CLI_MODEL="${GEMINI_CLI_MODEL:-gemini-2.5-flash}"
 GEMINI_API_MODEL="${GEMINI_API_MODEL:-gemini-2.5-flash}"
 GEMINI_API_ENDPOINT="${GEMINI_API_ENDPOINT:-https://generativelanguage.googleapis.com/v1beta}"
-CODEX_MODEL="${CODEX_MODEL:-o4-mini}"
+# CODEX_MODEL: leave unset to use user's ~/.codex/config.toml default, or set to override
+CODEX_MODEL="${CODEX_MODEL:-}"
 LOCAL_LLM_URL="${LOCAL_LLM_URL:-http://127.0.0.1:1234}"
 LOCAL_LLM_CONTEXT_SIZE="${LOCAL_LLM_CONTEXT_SIZE:-8192}"
 LOCAL_LLM_MODEL="${LOCAL_LLM_MODEL:-gemma3:27b}"
@@ -116,7 +117,7 @@ Environment Variables (from .env):
   GEMINI_API_MODEL     Model for API (default: gemini-2.5-flash)
   
   # Codex CLI
-  CODEX_MODEL          Model (default: o4-mini)
+  CODEX_MODEL          Model (default: from ~/.codex/config.toml)
   
   # Local LLM
   LOCAL_LLM_URL        Server URL (default: http://127.0.0.1:1234)
@@ -192,15 +193,17 @@ run_quota_checks() {
 
     # Codex check
     if command -v codex >/dev/null 2>&1; then
-        local c_out c_log
+        local c_out c_log model_arg
         c_out=$(mktemp)
         c_log=$(mktemp)
+        model_arg=""
+        [[ -n "$CODEX_MODEL" ]] && model_arg="-c model=\"$CODEX_MODEL\""
         if echo 'Return {"status":"ok"}' | codex exec --full-auto --color never --skip-git-repo-check \
-            -c model="$CODEX_MODEL" -c model_reasoning_effort="low" \
+            $model_arg -c model_reasoning_effort="low" \
             --output-last-message "$c_out" >/dev/null 2>"$c_log"; then
-            echo "  ✓ Codex CLI ($CODEX_MODEL): OK"
+            echo "  ✓ Codex CLI (${CODEX_MODEL:-<config>}): OK"
         else
-            echo "  ✗ Codex CLI ($CODEX_MODEL): FAIL"
+            echo "  ✗ Codex CLI (${CODEX_MODEL:-<config>}): FAIL"
             [[ -s "$c_log" ]] && echo "    $(tail -n 1 "$c_log")"
         fi
         rm -f "$c_out" "$c_log"
@@ -362,8 +365,12 @@ build_gemini_api_cmd() {
 }
 
 build_codex_cmd() {
+    local model_arg=""
+    if [[ -n "$CODEX_MODEL" ]]; then
+        model_arg="-c model=\"$CODEX_MODEL\""
+    fi
     echo "codex exec --full-auto --color never --skip-git-repo-check --cd \"{repo_dir}\" \
-        -c model=\"$CODEX_MODEL\" \
+        $model_arg \
         -c model_reasoning_effort=\"high\" \
         -c mcpServers.filesystem.command=\"npx\" \
         -c 'mcpServers.filesystem.args=[\"-y\",\"@modelcontextprotocol/server-filesystem\",\"{repo_dir}\"]' \
@@ -523,7 +530,7 @@ echo "Provider: ${AI_PROVIDER}"
 case "$AI_PROVIDER" in
     gemini-cli) echo "Model:    ${GEMINI_CLI_MODEL}" ;;
     gemini-api) echo "Model:    ${GEMINI_API_MODEL}" ;;
-    codex)      echo "Model:    ${CODEX_MODEL}" ;;
+    codex)      echo "Model:    ${CODEX_MODEL:-<from config>}" ;;
     local)      echo "Server:   ${LOCAL_LLM_URL}" 
                 echo "Model:    ${LOCAL_LLM_MODEL}" ;;
 esac

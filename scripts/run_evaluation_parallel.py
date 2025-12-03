@@ -196,10 +196,27 @@ def parse_score(
 ) -> Optional[float]:
     if not score_file:
         return None
-    candidate = artifacts_dir / score_file
-    if not candidate.exists():
-        logger.debug("Score file %s missing", candidate)
+    
+    # Try the primary score file, then fallback alternatives
+    score_files = [score_file]
+    if score_file == "gemini.json":
+        score_files.extend(["codex.json", "local.json"])
+    elif score_file == "codex.json":
+        score_files.extend(["gemini.json", "local.json"])
+    elif score_file == "local.json":
+        score_files.extend(["gemini.json", "codex.json"])
+    
+    candidate = None
+    for sf in score_files:
+        c = artifacts_dir / sf
+        if c.exists() and c.stat().st_size > 0:
+            candidate = c
+            break
+    
+    if not candidate:
+        logger.debug("No score file found in %s", artifacts_dir)
         return None
+    
     try:
         with candidate.open("r", encoding="utf-8") as handle:
             payload = json.load(handle)
@@ -470,6 +487,7 @@ def evaluate_row(
                         fallback_cmd = args.codex_command.format(
                             **{k: str(v) for k, v in context.items()}
                         )
+                        logger.info("Running fallback: %s", fallback_cmd[:100])
                         fallback_start = datetime.now(UTC)
                         fallback_result = run_command(
                             fallback_cmd, cwd=repo_dir, dry_run=args.dry_run, timeout=timeout
@@ -484,6 +502,11 @@ def evaluate_row(
                             "duration_seconds": fallback_duration,
                         }
                         analysis_log.append(fallback_entry)
+                        # Log fallback to errors.log too
+                        append_to_log(
+                            artifacts_dir / "errors.log",
+                            f"[fallback-1] {fallback_cmd}\nExit code: {fallback_result.returncode}\nStderr: {(fallback_result.stderr or '').strip()}"
+                        )
                         used_fallback = True
                         
                         if fallback_result.returncode == 0:
