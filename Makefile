@@ -5,7 +5,7 @@ export
 WORKERS ?= 4
 N ?= 3
 
-.PHONY: help run run-all run-parallel run-limit run-codex clean clean-all setup lint format test compare qdrant-up qdrant-down
+.PHONY: help run run-all run-parallel run-limit run-codex clean clean-all setup lint format test compare qdrant-up qdrant-down clone
 
 help:
 	@echo "EASS Student Project Evaluator"
@@ -38,6 +38,23 @@ run-parallel:
 N ?= 3
 run-limit:
 	./run.sh --ai gemini --limit $(N)
+
+clone:
+	@echo "Cloning repositories from submission.csv..."
+	@mkdir -p work
+	@if [ ! -f submission.csv ]; then echo "Error: submission.csv not found. Copy from submission.csv.example"; exit 1; fi
+	@tail -n +2 submission.csv | while IFS=, read -r timestamp email student_name q1 q2 q3 repo_url; do \
+		dir_name=$$(echo "$$student_name" | tr ' ' '_' | tr '[:upper:]' '[:lower:]'); \
+		repo_url=$$(echo "$$repo_url" | sed 's|/tree/main$$||' | tr -d '\r'); \
+		if [ ! -d "work/$$dir_name/repo/.git" ]; then \
+			echo "Cloning $$repo_url to work/$$dir_name/repo..."; \
+			mkdir -p "work/$$dir_name/repo" "work/$$dir_name/artifacts" "work/$$dir_name/reports"; \
+			git clone "$$repo_url" "work/$$dir_name/repo" 2>&1 || echo "Failed to clone $$repo_url"; \
+		else \
+			echo "Skipping $$dir_name (already exists)"; \
+		fi \
+	done
+	@echo "Done."
 
 clean:
 	@echo "Cleaning work directory..."
