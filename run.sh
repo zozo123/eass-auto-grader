@@ -36,9 +36,6 @@ GEMINI_API_MODEL="${GEMINI_API_MODEL:-gemini-2.5-flash}"
 GEMINI_API_ENDPOINT="${GEMINI_API_ENDPOINT:-https://generativelanguage.googleapis.com/v1beta}"
 # CODEX_MODEL: leave unset to use user's ~/.codex/config.toml default, or set to override
 CODEX_MODEL="${CODEX_MODEL:-}"
-LOCAL_LLM_URL="${LOCAL_LLM_URL:-http://127.0.0.1:1234}"
-LOCAL_LLM_CONTEXT_SIZE="${LOCAL_LLM_CONTEXT_SIZE:-8192}"
-LOCAL_LLM_MODEL="${LOCAL_LLM_MODEL:-gemma3:27b}"
 AI_FALLBACK_CHAIN="${AI_FALLBACK_CHAIN:-codex}"
 
 # =============================================================================
@@ -79,7 +76,6 @@ while [[ $# -gt 0 ]]; do
                 gemini-cli) GEMINI_CLI_MODEL="$2" ;;
                 gemini-api) GEMINI_API_MODEL="$2" ;;
                 codex) CODEX_MODEL="$2" ;;
-                local) LOCAL_LLM_MODEL="$2" ;;
             esac
             shift 2
             ;;
@@ -94,7 +90,6 @@ AI Providers:
   gemini-cli   Gemini CLI tool (uses OAuth, no API key needed) [DEFAULT]
   gemini-api   Direct Gemini API via HTTP (requires GEMINI_API_KEY)
   codex        OpenAI Codex CLI
-  local        Local LLM via Ollama/llama-server
 
 Options:
   --ai <provider>    AI provider (see above)
@@ -107,7 +102,7 @@ Options:
   -h, --help         Show this help
 
 Environment Variables (from .env):
-  AI_PROVIDER          Default provider (gemini-cli, gemini-api, codex, local)
+  AI_PROVIDER          Default provider (gemini-cli, gemini-api, codex)
   
   # Gemini CLI (OAuth-based, no key needed)
   GEMINI_CLI_MODEL     Model for CLI (default: gemini-2.5-flash)
@@ -118,16 +113,11 @@ Environment Variables (from .env):
   
   # Codex CLI
   CODEX_MODEL          Model (default: from ~/.codex/config.toml)
-  
-  # Local LLM
-  LOCAL_LLM_URL        Server URL (default: http://127.0.0.1:1234)
-  LOCAL_LLM_MODEL      Model name (default: gemma3:27b)
 
 Examples:
   ./run.sh                              # Use Gemini CLI (default)
   ./run.sh --ai gemini-api --limit 5    # Use Gemini API with key
   ./run.sh --ai codex --model o3        # Use Codex with o3 model
-  ./run.sh --ai local                   # Use local Ollama
   ./run.sh --parallel --workers 4       # Run 4 evaluations in parallel
 EOF
             exit 0
@@ -142,11 +132,11 @@ done
 
 # Validate provider
 case "$AI_PROVIDER" in
-    gemini-cli|gemini-api|codex|local) ;;
+    gemini-cli|gemini-api|codex) ;;
     gemini) AI_PROVIDER="gemini-cli" ;;  # Legacy alias
     *)
         echo "Error: Invalid AI provider '$AI_PROVIDER'"
-        echo "Valid options: gemini-cli, gemini-api, codex, local"
+        echo "Valid options: gemini-cli, gemini-api, codex"
         exit 1
         ;;
 esac
@@ -211,81 +201,7 @@ run_quota_checks() {
         echo "  - Codex CLI: not installed"
     fi
 
-    # Local LLM check (and auto-start if configured)
-    if curl -s --connect-timeout 2 "$LOCAL_LLM_URL/health" >/dev/null 2>&1 || \
-       curl -s --connect-timeout 2 "$LOCAL_LLM_URL/v1/models" >/dev/null 2>&1; then
-        echo "  ✓ Local LLM ($LOCAL_LLM_URL): OK"
-    else
-        # Try to auto-start local LLM if AUTO_START_LOCAL_LLM is set
-        if [[ "${AUTO_START_LOCAL_LLM:-false}" == "true" ]]; then
-            echo "  ⟳ Local LLM ($LOCAL_LLM_URL): starting..."
-            start_local_llm
-            # Wait and check again
-            sleep 3
-            if curl -s --connect-timeout 5 "$LOCAL_LLM_URL/health" >/dev/null 2>&1 || \
-               curl -s --connect-timeout 5 "$LOCAL_LLM_URL/v1/models" >/dev/null 2>&1; then
-                echo "  ✓ Local LLM ($LOCAL_LLM_URL): started OK"
-            else
-                echo "  ✗ Local LLM ($LOCAL_LLM_URL): failed to start"
-            fi
-        else
-            echo "  - Local LLM ($LOCAL_LLM_URL): not running"
-        fi
-    fi
-
     echo ""
-}
-
-# =============================================================================
-# Auto-start local LLM server
-# =============================================================================
-start_local_llm() {
-    local port="${LOCAL_LLM_URL##*:}"
-    port="${port%%/*}"
-    
-    # Ensure logs directory exists
-    mkdir -p logs
-    
-    # Check if llama-server is available
-    if command -v llama-server >/dev/null 2>&1; then
-        echo "    Starting llama-server in background..."
-        nohup llama-server \
-            -hf "${LOCAL_LLM_HF_MODEL:-ggml-org/gemma-3-27b-it-GGUF}" \
-            --port "$port" \
-            --host 127.0.0.1 \
-            --jinja \
-            -c "${LOCAL_LLM_CONTEXT_SIZE:-8192}" \
-            > logs/llama-server.log 2>&1 &
-        echo "    PID: $!"
-        echo "    Log: logs/llama-server.log"
-    # Check if ollama is available
-    elif command -v ollama >/dev/null 2>&1; then
-        echo "    Starting ollama serve in background..."
-        nohup ollama serve > logs/ollama.log 2>&1 &
-        echo "    PID: $!"
-        sleep 2
-        # Pull model if needed
-        ollama pull "${LOCAL_LLM_MODEL:-gemma3:27b}" 2>/dev/null || true
-    else
-        echo "    No local LLM server found (llama-server or ollama)"
-    fi
-}
-
-# =============================================================================
-# Check if local LLM is available (for secondary fallback)
-# =============================================================================
-check_local_llm() {
-    # Check if local LLM server is running
-    if curl -s --connect-timeout 2 "$LOCAL_LLM_URL/health" >/dev/null 2>&1 || \
-       curl -s --connect-timeout 2 "$LOCAL_LLM_URL/v1/models" >/dev/null 2>&1; then
-        return 0
-    fi
-    # Check if we can start it
-    if [[ "${AUTO_START_LOCAL_LLM:-false}" == "true" ]] && \
-       (command -v llama-server >/dev/null 2>&1 || command -v ollama >/dev/null 2>&1); then
-        return 0
-    fi
-    return 1
 }
 
 run_quota_checks
@@ -313,35 +229,6 @@ validate_provider() {
             if ! command -v codex >/dev/null 2>&1; then
                 echo "Error: Codex CLI not installed"
                 exit 1
-            fi
-            ;;
-        local)
-            if ! curl -s --connect-timeout 2 "$LOCAL_LLM_URL/health" >/dev/null 2>&1 && \
-               ! curl -s --connect-timeout 2 "$LOCAL_LLM_URL/v1/models" >/dev/null 2>&1; then
-                # Try to auto-start if configured
-                if [[ "${AUTO_START_LOCAL_LLM:-false}" == "true" ]]; then
-                    echo "Local LLM not running, attempting to start..."
-                    start_local_llm
-                    sleep 5  # Give it time to start
-                    
-                    # Check again
-                    if ! curl -s --connect-timeout 5 "$LOCAL_LLM_URL/health" >/dev/null 2>&1 && \
-                       ! curl -s --connect-timeout 5 "$LOCAL_LLM_URL/v1/models" >/dev/null 2>&1; then
-                        echo "Error: Failed to start local LLM server"
-                        exit 1
-                    fi
-                    echo "Local LLM started successfully"
-                else
-                    echo "Error: Local LLM server not running at $LOCAL_LLM_URL"
-                    echo ""
-                    echo "Start a local server with:"
-                    echo "  llama-server -hf ggml-org/gemma-3-27b-it-GGUF --port 1234 --host 127.0.0.1 --jinja -c $LOCAL_LLM_CONTEXT_SIZE"
-                    echo "or:"
-                    echo "  ollama serve"
-                    echo ""
-                    echo "Or set AUTO_START_LOCAL_LLM=true in .env to auto-start"
-                    exit 1
-                fi
             fi
             ;;
     esac
@@ -377,15 +264,6 @@ build_codex_cmd() {
         --output-last-message \"{artifacts_dir}/codex.json\" < \"$CODEX_PROMPT_FILE\""
 }
 
-build_local_cmd() {
-    echo "codex exec --full-auto --color never --skip-git-repo-check --cd \"{repo_dir}\" \
-        --oss \
-        -c model_reasoning_effort=\"high\" \
-        -c mcpServers.filesystem.command=\"npx\" \
-        -c 'mcpServers.filesystem.args=[\"-y\",\"@modelcontextprotocol/server-filesystem\",\"{repo_dir}\"]' \
-        --output-last-message \"{artifacts_dir}/local.json\" < \"$CODEX_PROMPT_FILE\""
-}
-
 # Determine fallback command based on AI_FALLBACK_CHAIN
 get_fallback_cmd() {
     local fallback="$1"
@@ -405,12 +283,6 @@ get_fallback_cmd() {
                 build_gemini_api_cmd
             fi
             ;;
-        local)
-            if curl -s --connect-timeout 2 "$LOCAL_LLM_URL/health" >/dev/null 2>&1 || \
-               curl -s --connect-timeout 2 "$LOCAL_LLM_URL/v1/models" >/dev/null 2>&1; then
-                build_local_cmd
-            fi
-            ;;
     esac
 }
 
@@ -425,18 +297,9 @@ case "$AI_PROVIDER" in
         FALLBACK_CMD="$(get_fallback_cmd "$AI_FALLBACK_CHAIN")"
         if [[ -n "$FALLBACK_CMD" ]]; then
             FALLBACK_ARGS=(--fallback-codex --codex-command "$FALLBACK_CMD")
-            # Secondary fallback to local LLM if available
-            if check_local_llm; then
-                LOCAL_FALLBACK_CMD="$(build_local_cmd)"
-                SECONDARY_FALLBACK_ARG=(--secondary-fallback "$LOCAL_FALLBACK_CMD")
-            else
-                SECONDARY_FALLBACK_ARG=()
-            fi
         else
             FALLBACK_ARGS=()
-            SECONDARY_FALLBACK_ARG=()
         fi
-        SECONDARY_ARG=()
         ;;
         
     gemini-api)
@@ -449,18 +312,9 @@ case "$AI_PROVIDER" in
         FALLBACK_CMD="$(get_fallback_cmd "$AI_FALLBACK_CHAIN")"
         if [[ -n "$FALLBACK_CMD" ]]; then
             FALLBACK_ARGS=(--fallback-codex --codex-command "$FALLBACK_CMD")
-            # Secondary fallback to local LLM if available
-            if check_local_llm; then
-                LOCAL_FALLBACK_CMD="$(build_local_cmd)"
-                SECONDARY_FALLBACK_ARG=(--secondary-fallback "$LOCAL_FALLBACK_CMD")
-            else
-                SECONDARY_FALLBACK_ARG=()
-            fi
         else
             FALLBACK_ARGS=()
-            SECONDARY_FALLBACK_ARG=()
         fi
-        SECONDARY_ARG=()
         ;;
         
     codex)
@@ -482,42 +336,9 @@ case "$AI_PROVIDER" in
             else
                 FALLBACK_ARGS=()
             fi
-            # Secondary fallback to local LLM if available
-            if check_local_llm; then
-                LOCAL_FALLBACK_CMD="$(build_local_cmd)"
-                SECONDARY_FALLBACK_ARG=(--secondary-fallback "$LOCAL_FALLBACK_CMD")
-            else
-                SECONDARY_FALLBACK_ARG=()
-            fi
-        else
-            FALLBACK_ARGS=()
-            # If no Gemini fallback, local is first fallback
-            if check_local_llm; then
-                LOCAL_FALLBACK_CMD="$(build_local_cmd)"
-                FALLBACK_ARGS=(--fallback-codex --codex-command "$LOCAL_FALLBACK_CMD")
-            fi
-            SECONDARY_FALLBACK_ARG=()
-        fi
-        SECONDARY_ARG=()
-        ;;
-        
-    local)
-        # Local LLM via Ollama/llama-server
-        AI_COMMAND="$(build_local_cmd)"
-        SCORE_FILE="local.json"
-        
-        # Use local as primary
-        PRIMARY_ARG=(--gemini-command "$AI_COMMAND")
-        
-        # Fallback to Codex or Gemini
-        FALLBACK_CMD="$(get_fallback_cmd "$AI_FALLBACK_CHAIN")"
-        if [[ -n "$FALLBACK_CMD" ]]; then
-            FALLBACK_ARGS=(--fallback-codex --codex-command "$FALLBACK_CMD")
         else
             FALLBACK_ARGS=()
         fi
-        SECONDARY_FALLBACK_ARG=()
-        SECONDARY_ARG=()
         ;;
 esac
 
@@ -531,15 +352,12 @@ case "$AI_PROVIDER" in
     gemini-cli) echo "Model:    ${GEMINI_CLI_MODEL}" ;;
     gemini-api) echo "Model:    ${GEMINI_API_MODEL}" ;;
     codex)      echo "Model:    ${CODEX_MODEL:-<from config>}" ;;
-    local)      echo "Server:   ${LOCAL_LLM_URL}" 
-                echo "Model:    ${LOCAL_LLM_MODEL}" ;;
 esac
 echo "Timeout:  ${TIMEOUT}s"
 [[ -n "$LIMIT" ]] && echo "Limit:    ${LIMIT#--limit }"
 [[ -z "$NO_CLEAN" ]] && echo "Clean:    yes"
 [[ -n "$PARALLEL" ]] && echo "Parallel: ${WORKERS} workers"
 [[ -n "${FALLBACK_ARGS[*]}" ]] && echo "Fallback: ${AI_FALLBACK_CHAIN}"
-[[ -n "${SECONDARY_FALLBACK_ARG[*]}" ]] && echo "Fallback2: local LLM"
 echo ""
 
 # =============================================================================
@@ -558,9 +376,7 @@ if [[ -n "$PARALLEL" ]]; then
         --timeout-seconds "$TIMEOUT" \
         --workers "$WORKERS" \
         "${PRIMARY_ARG[@]}" \
-        "${SECONDARY_ARG[@]}" \
-        "${FALLBACK_ARGS[@]}" \
-        "${SECONDARY_FALLBACK_ARG[@]}"
+        "${FALLBACK_ARGS[@]}"
 else
     # Sequential mode
     uv run python scripts/run_evaluation_parallel.py \
@@ -574,9 +390,7 @@ else
         --timeout-seconds "$TIMEOUT" \
         --workers 1 \
         "${PRIMARY_ARG[@]}" \
-        "${SECONDARY_ARG[@]}" \
-        "${FALLBACK_ARGS[@]}" \
-        "${SECONDARY_FALLBACK_ARG[@]}"
+        "${FALLBACK_ARGS[@]}"
 fi
 
 # =============================================================================

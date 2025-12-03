@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Parallel orchestrator for Gemini/Codex evaluations using uv-friendly commands."""
+"""Parallel orchestrator for Gemini/Codex evaluations using uv-friendly commands.
+
+Uses Pydantic models for structured, validated JSON output from all AI providers.
+"""
 
 import argparse
 import concurrent.futures
@@ -11,11 +14,52 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urlparse
+
+# Add scripts directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
+
+from pydantic import ValidationError
+from models import GradingResponse
+
+
+def validate_with_pydantic(json_data: dict, logger: logging.Logger) -> Optional[GradingResponse]:
+    """Validate JSON data against Pydantic model.
+    
+    Returns:
+        Validated GradingResponse or None if validation fails.
+    """
+    try:
+        return GradingResponse.model_validate(json_data)
+    except ValidationError as e:
+        logger.warning("Pydantic validation failed: %s", e.error_count())
+        for error in e.errors()[:5]:  # Log first 5 errors
+            logger.debug("  - %s: %s", error.get("loc"), error.get("msg"))
+        return None
+
+
+def extract_json_from_response(text: str) -> str:
+    """Extract JSON from potentially messy LLM output."""
+    if not text:
+        return ""
+    
+    # Remove markdown code fences
+    text = re.sub(r'^```(?:json)?\s*', '', text, flags=re.MULTILINE)
+    text = re.sub(r'```\s*$', '', text, flags=re.MULTILINE)
+    
+    # Find JSON object
+    first_brace = text.find('{')
+    last_brace = text.rfind('}')
+    
+    if first_brace == -1 or last_brace == -1:
+        return text.strip()
+    
+    return text[first_brace:last_brace + 1]
 
 
 def detect_quota_error(data: Any, raw_content: str = "") -> Tuple[bool, bool]:
@@ -191,20 +235,103 @@ def append_to_log(path: Path, contents: str) -> None:
         handle.write("\n")
 
 
+def _try_repair_json(content: str, logger: logging.Logger) -> Optional[dict]:
+    """Attempt to repair common JSON issues from AI model outputs.
+    
+    Returns parsed JSON dict if successful, None otherwise.
+    """
+    # First extract JSON from any surrounding text
+    content = extract_json_from_response(content)
+    
+    # Track brackets to find mismatches
+    in_string = False
+    escape = False
+    opens = []
+    
+    for i, c in enumerate(content):
+        if escape:
+            escape = False
+            continue
+        if c == '\\' and in_string:
+            escape = True
+            continue
+        if c == '"' and not escape:
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        
+        if c == '[':
+            opens.append(('[', i))
+        elif c == '{':
+            opens.append(('{', i))
+        elif c == ']':
+            if opens and opens[-1][0] == '[':
+                opens.pop()
+            else:
+                # Extra ] - try removing it
+                logger.debug("Attempting to fix extra ] at position %d", i)
+                fixed = content[:i] + content[i+1:]
+                try:
+                    return json.loads(fixed)
+                except json.JSONDecodeError:
+                    pass
+        elif c == '}':
+            if opens and opens[-1][0] == '{':
+                opens.pop()
+            else:
+                # Extra } - try removing it
+                logger.debug("Attempting to fix extra } at position %d", i)
+                fixed = content[:i] + content[i+1:]
+                try:
+                    return json.loads(fixed)
+                except json.JSONDecodeError:
+                    pass
+    
+    # Try removing trailing commas
+    fixed = re.sub(r',(\s*[}\]])', r'\1', content)
+    try:
+        return json.loads(fixed)
+    except json.JSONDecodeError:
+        pass
+    
+    # Try adding missing closing brackets
+    open_braces = content.count('{') - content.count('}')
+    open_brackets = content.count('[') - content.count(']')
+    
+    if open_braces > 0 or open_brackets > 0:
+        fixed = content
+        if open_brackets > 0:
+            fixed += ']' * open_brackets
+        if open_braces > 0:
+            fixed += '}' * open_braces
+        try:
+            return json.loads(fixed)
+        except json.JSONDecodeError:
+            pass
+    
+    return None
+
+
 def parse_score(
     artifacts_dir: Path, score_file: str, score_key: str, logger: logging.Logger
-) -> Optional[float]:
+) -> Tuple[Optional[float], Optional[GradingResponse]]:
+    """Parse score from AI output files, with Pydantic validation.
+    
+    Returns:
+        Tuple of (score, validated_response) - response may be None even if score is found.
+    """
     if not score_file:
-        return None
+        return None, None
     
     # Try the primary score file, then fallback alternatives
     score_files = [score_file]
     if score_file == "gemini.json":
-        score_files.extend(["codex.json", "local.json"])
+        score_files.extend(["codex.json", "grading_result.json"])
     elif score_file == "codex.json":
-        score_files.extend(["gemini.json", "local.json"])
-    elif score_file == "local.json":
-        score_files.extend(["gemini.json", "codex.json"])
+        score_files.extend(["gemini.json", "grading_result.json"])
+    else:
+        score_files.extend(["gemini.json", "codex.json", "grading_result.json"])
     
     candidate = None
     for sf in score_files:
@@ -215,14 +342,25 @@ def parse_score(
     
     if not candidate:
         logger.debug("No score file found in %s", artifacts_dir)
-        return None
+        return None, None
     
     try:
         with candidate.open("r", encoding="utf-8") as handle:
-            payload = json.load(handle)
-    except json.JSONDecodeError:
-        logger.warning("Unable to decode %s as JSON", candidate)
-        return None
+            content = handle.read()
+        payload = json.loads(content)
+    except json.JSONDecodeError as e:
+        logger.warning("JSON decode error in %s: %s", candidate, e)
+        # Try to repair common JSON issues
+        payload = _try_repair_json(content, logger)
+        if payload is None:
+            # Last resort: try to extract final_score with regex
+            score_match = re.search(r'"final_score"\s*:\s*(\d+(?:\.\d+)?)', content)
+            if score_match:
+                score = float(score_match.group(1))
+                logger.info("Extracted score %s via regex from malformed JSON", score)
+                return score, None
+            logger.warning("Unable to decode or repair %s as JSON", candidate)
+            return None, None
 
     # Handle Gemini CLI output format where response is a JSON string
     if isinstance(payload, dict) and "response" in payload:
@@ -233,15 +371,10 @@ def parse_score(
                 payload = json.loads(response_str)
             except json.JSONDecodeError:
                 # Try to extract JSON from response text (e.g., ```json {...} ```)
-                json_match = re.search(
-                    r'\{[^{}]*"final_score"\s*:\s*(\d+(?:\.\d+)?)[^{}]*\}', response_str
-                )
-                if json_match:
-                    try:
-                        payload = json.loads(json_match.group(0))
-                    except json.JSONDecodeError:
-                        pass
-                else:
+                extracted = extract_json_from_response(response_str)
+                try:
+                    payload = json.loads(extracted)
+                except json.JSONDecodeError:
                     # Try to extract just a number after "final_score"
                     score_match = re.search(
                         r'final_score["\s:]+(\d+(?:\.\d+)?)',
@@ -249,7 +382,7 @@ def parse_score(
                         re.IGNORECASE,
                     )
                     if score_match:
-                        return float(score_match.group(1))
+                        return float(score_match.group(1)), None
                     # Last resort: look for any score pattern like "score: 7" or "7/10"
                     score_match = re.search(
                         r"(?:score|rating)[:\s]+(\d+(?:\.\d+)?)",
@@ -257,21 +390,33 @@ def parse_score(
                         re.IGNORECASE,
                     )
                     if score_match:
-                        return float(score_match.group(1))
+                        return float(score_match.group(1)), None
                     logger.warning(
                         "Unable to extract score from response in %s", candidate
                     )
-                    return None
+                    return None, None
 
+    # Try Pydantic validation
+    validated = validate_with_pydantic(payload, logger)
+    if validated:
+        logger.info("✅ Pydantic validation passed for %s", candidate.name)
+        # Save validated output
+        validated_file = artifacts_dir / "grading_result.json"
+        validated_file.write_text(validated.model_dump_json(indent=2))
+        return validated.final_score, validated
+    else:
+        logger.warning("⚠️ Pydantic validation failed, falling back to key extraction")
+    
+    # Fallback: extract score by key path
     value = payload
     for segment in score_key.split("."):
         if isinstance(value, dict) and segment in value:
             value = value[segment]
         else:
-            return None
+            return None, None
     if isinstance(value, (int, float)):
-        return float(value)
-    return None
+        return float(value), None
+    return None, None
 
 
 def summarize_notes(notes: List[str]) -> str:
@@ -320,8 +465,8 @@ def write_index(entries: List[Dict[str, object]], results_dir: Path) -> None:
         "",
         f"Generated on {now} UTC",
         "",
-        "| Rank | Student | Email | Raw Score | Normalized | Status | Notes | Feedback |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| Rank | Student | Email | Raw Score | Normalized | Grade | Validated | Status | Notes | Feedback |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for rank, entry in enumerate(
         sorted(
@@ -333,13 +478,17 @@ def write_index(entries: List[Dict[str, object]], results_dir: Path) -> None:
         slug = entry["student_slug"]
         link = f"[feedback](../work/{slug}/reports/{slug}.feedback.md)"
         notes = entry.get("notes") or ""
+        grade = entry.get("grade", "N/A")
+        validated = "✓" if entry.get("pydantic_validated") else "✗"
         lines.append(
-            "| {} | {} | {} | {:.2f} | {:.2f} | {} | {} | {} |".format(
+            "| {} | {} | {} | {:.2f} | {:.2f} | {} | {} | {} | {} | {} |".format(
                 rank,
                 entry["student_name"] or "unknown",
                 entry["email"] or "n/a",
                 entry["score"],
                 entry["normalized_score"],
+                grade,
+                validated,
                 entry["status"],
                 notes,
                 link,
@@ -513,41 +662,9 @@ def evaluate_row(
                             primary_succeeded = True
                             notes.append("Fallback 1 succeeded")
                         else:
-                            # Try secondary fallback (usually local LLM)
-                            if args.secondary_fallback and not used_secondary_fallback:
-                                logger.warning("First fallback failed, trying secondary fallback (local LLM)...")
-                                notes.append("Fallback 1 failed, trying local LLM")
-                                
-                                secondary_cmd = args.secondary_fallback.format(
-                                    **{k: str(v) for k, v in context.items()}
-                                )
-                                secondary_start = datetime.now(UTC)
-                                secondary_result = run_command(
-                                    secondary_cmd, cwd=repo_dir, dry_run=args.dry_run, timeout=timeout
-                                )
-                                secondary_duration = (datetime.now(UTC) - secondary_start).total_seconds()
-                                secondary_entry = {
-                                    "step": "fallback-2",
-                                    "command": secondary_cmd,
-                                    "returncode": secondary_result.returncode,
-                                    "stdout": (secondary_result.stdout or "").strip(),
-                                    "stderr": (secondary_result.stderr or "").strip(),
-                                    "duration_seconds": secondary_duration,
-                                }
-                                analysis_log.append(secondary_entry)
-                                used_secondary_fallback = True
-                                
-                                if secondary_result.returncode == 0:
-                                    primary_succeeded = True
-                                    notes.append("Local LLM fallback succeeded")
-                                else:
-                                    tool_failure = True
-                                    notes.append(f"All fallbacks failed")
-                                    logger.warning("All fallback commands failed")
-                            else:
-                                tool_failure = True
-                                notes.append(f"Fallback failed ({fallback_result.returncode})")
-                                logger.warning("Fallback command failed: %s", fallback_cmd)
+                            tool_failure = True
+                            notes.append(f"Fallback failed ({fallback_result.returncode})")
+                            logger.warning("Fallback command failed: %s", fallback_cmd)
                     else:
                         tool_failure = True
                         notes.append(f"{command.split()[0]} returned {result.returncode}")
@@ -555,13 +672,20 @@ def evaluate_row(
                 else:
                     primary_succeeded = True
 
+    validated_response = None
     if not clone_failure:
-        score_value = parse_score(
+        score_value, validated_response = parse_score(
             Path(artifacts_dir), args.score_file, args.score_key, logger
         )
+    else:
+        score_value = None
+    
     if score_value is None:
         score_value = 0.0
         notes.append("Score not found")
+    elif validated_response:
+        notes.append("Pydantic validated ✓")
+    
     final_score = max(0.0, min(score_value, 10.0))
     final_percentage = round(final_score * 10.0, 2)
     status = (
@@ -585,6 +709,8 @@ def evaluate_row(
         "notes": summarize_notes(notes),
         "artifacts_dir": str(artifacts_dir),
         "analysis": analysis_log,
+        "pydantic_validated": validated_response is not None,
+        "grade": validated_response.pass_fail.grade.value if validated_response else None,
     }
 
 
@@ -671,11 +797,6 @@ def main() -> None:
         "--fallback-codex",
         action="store_true",
         help="Use codex-command as fallback only when gemini fails (quota/rate limit/error).",
-    )
-    parser.add_argument(
-        "--secondary-fallback",
-        default=None,
-        help="Optional secondary fallback command (e.g., local LLM) when both primary and codex fail.",
     )
     parser.add_argument(
         "--workers", type=int, default=4, help="Number of concurrent workers."
@@ -770,6 +891,8 @@ def main() -> None:
                 "normalized_score",
                 "final_percentage",
                 "normalized_percentage",
+                "grade",
+                "validated",
                 "status",
                 "notes",
             ]
@@ -788,6 +911,8 @@ def main() -> None:
                     f"{entry['normalized_score']:.2f}",
                     f"{entry['final_percentage']:.2f}",
                     f"{entry['normalized_percentage']:.2f}",
+                    entry.get("grade", "N/A"),
+                    "✓" if entry.get("pydantic_validated") else "✗",
                     entry["status"],
                     entry["notes"],
                 ]
