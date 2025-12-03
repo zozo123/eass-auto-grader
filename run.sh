@@ -268,6 +268,23 @@ start_local_llm() {
     fi
 }
 
+# =============================================================================
+# Check if local LLM is available (for secondary fallback)
+# =============================================================================
+check_local_llm() {
+    # Check if local LLM server is running
+    if curl -s --connect-timeout 2 "$LOCAL_LLM_URL/health" >/dev/null 2>&1 || \
+       curl -s --connect-timeout 2 "$LOCAL_LLM_URL/v1/models" >/dev/null 2>&1; then
+        return 0
+    fi
+    # Check if we can start it
+    if [[ "${AUTO_START_LOCAL_LLM:-false}" == "true" ]] && \
+       (command -v llama-server >/dev/null 2>&1 || command -v ollama >/dev/null 2>&1); then
+        return 0
+    fi
+    return 1
+}
+
 run_quota_checks
 
 # =============================================================================
@@ -401,8 +418,16 @@ case "$AI_PROVIDER" in
         FALLBACK_CMD="$(get_fallback_cmd "$AI_FALLBACK_CHAIN")"
         if [[ -n "$FALLBACK_CMD" ]]; then
             FALLBACK_ARGS=(--fallback-codex --codex-command "$FALLBACK_CMD")
+            # Secondary fallback to local LLM if available
+            if check_local_llm; then
+                LOCAL_FALLBACK_CMD="$(build_local_cmd)"
+                SECONDARY_FALLBACK_ARG=(--secondary-fallback "$LOCAL_FALLBACK_CMD")
+            else
+                SECONDARY_FALLBACK_ARG=()
+            fi
         else
             FALLBACK_ARGS=()
+            SECONDARY_FALLBACK_ARG=()
         fi
         SECONDARY_ARG=()
         ;;
@@ -417,8 +442,16 @@ case "$AI_PROVIDER" in
         FALLBACK_CMD="$(get_fallback_cmd "$AI_FALLBACK_CHAIN")"
         if [[ -n "$FALLBACK_CMD" ]]; then
             FALLBACK_ARGS=(--fallback-codex --codex-command "$FALLBACK_CMD")
+            # Secondary fallback to local LLM if available
+            if check_local_llm; then
+                LOCAL_FALLBACK_CMD="$(build_local_cmd)"
+                SECONDARY_FALLBACK_ARG=(--secondary-fallback "$LOCAL_FALLBACK_CMD")
+            else
+                SECONDARY_FALLBACK_ARG=()
+            fi
         else
             FALLBACK_ARGS=()
+            SECONDARY_FALLBACK_ARG=()
         fi
         SECONDARY_ARG=()
         ;;
@@ -442,8 +475,21 @@ case "$AI_PROVIDER" in
             else
                 FALLBACK_ARGS=()
             fi
+            # Secondary fallback to local LLM if available
+            if check_local_llm; then
+                LOCAL_FALLBACK_CMD="$(build_local_cmd)"
+                SECONDARY_FALLBACK_ARG=(--secondary-fallback "$LOCAL_FALLBACK_CMD")
+            else
+                SECONDARY_FALLBACK_ARG=()
+            fi
         else
             FALLBACK_ARGS=()
+            # If no Gemini fallback, local is first fallback
+            if check_local_llm; then
+                LOCAL_FALLBACK_CMD="$(build_local_cmd)"
+                FALLBACK_ARGS=(--fallback-codex --codex-command "$LOCAL_FALLBACK_CMD")
+            fi
+            SECONDARY_FALLBACK_ARG=()
         fi
         SECONDARY_ARG=()
         ;;
@@ -463,6 +509,7 @@ case "$AI_PROVIDER" in
         else
             FALLBACK_ARGS=()
         fi
+        SECONDARY_FALLBACK_ARG=()
         SECONDARY_ARG=()
         ;;
 esac
@@ -485,6 +532,7 @@ echo "Timeout:  ${TIMEOUT}s"
 [[ -z "$NO_CLEAN" ]] && echo "Clean:    yes"
 [[ -n "$PARALLEL" ]] && echo "Parallel: ${WORKERS} workers"
 [[ -n "${FALLBACK_ARGS[*]}" ]] && echo "Fallback: ${AI_FALLBACK_CHAIN}"
+[[ -n "${SECONDARY_FALLBACK_ARG[*]}" ]] && echo "Fallback2: local LLM"
 echo ""
 
 # =============================================================================
@@ -504,10 +552,11 @@ if [[ -n "$PARALLEL" ]]; then
         --workers "$WORKERS" \
         "${PRIMARY_ARG[@]}" \
         "${SECONDARY_ARG[@]}" \
-        "${FALLBACK_ARGS[@]}"
+        "${FALLBACK_ARGS[@]}" \
+        "${SECONDARY_FALLBACK_ARG[@]}"
 else
     # Sequential mode
-    uv run python scripts/run_evaluation.py \
+    uv run python scripts/run_evaluation_parallel.py \
         $NO_CLEAN \
         $LIMIT \
         --keep-clones \
@@ -516,9 +565,11 @@ else
         --score-file "$SCORE_FILE" \
         --score-key final_score \
         --timeout-seconds "$TIMEOUT" \
+        --workers 1 \
         "${PRIMARY_ARG[@]}" \
         "${SECONDARY_ARG[@]}" \
-        "${FALLBACK_ARGS[@]}"
+        "${FALLBACK_ARGS[@]}" \
+        "${SECONDARY_FALLBACK_ARG[@]}"
 fi
 
 # =============================================================================

@@ -409,16 +409,19 @@ def evaluate_row(
             # Track whether primary AI command succeeded
             primary_succeeded = False
             used_fallback = False
+            used_secondary_fallback = False
+            
+            # Build context for command templates
+            context = {
+                "repo_dir": repo_dir,
+                "artifacts_dir": artifacts_dir,
+                "student_slug": slug,
+                "repo_url": repo_url,
+                "student_name": student_name,
+                "timestamp": datetime.now(UTC).isoformat(),
+            }
             
             for idx, command_template in enumerate(commands, start=1):
-                context = {
-                    "repo_dir": repo_dir,
-                    "artifacts_dir": artifacts_dir,
-                    "student_slug": slug,
-                    "repo_url": repo_url,
-                    "student_name": student_name,
-                    "timestamp": datetime.now(UTC).isoformat(),
-                }
                 command = command_template.format(
                     **{k: str(v) for k, v in context.items()}
                 )
@@ -458,6 +461,7 @@ def evaluate_row(
                     combined_output = f"{result.stdout or ''}\n{result.stderr or ''}"
                     quota_err, rate_err = detect_quota_error({}, combined_output)
                     
+                    # Try first fallback (usually codex)
                     if (quota_err or rate_err) and args.fallback_codex and args.codex_command and not used_fallback:
                         logger.warning("Primary command failed (quota/rate-limit), trying fallback...")
                         notes.append("Primary AI failed, using fallback")
@@ -472,7 +476,7 @@ def evaluate_row(
                         )
                         fallback_duration = (datetime.now(UTC) - fallback_start).total_seconds()
                         fallback_entry = {
-                            "step": f"fallback",
+                            "step": "fallback-1",
                             "command": fallback_cmd,
                             "returncode": fallback_result.returncode,
                             "stdout": (fallback_result.stdout or "").strip(),
@@ -484,11 +488,43 @@ def evaluate_row(
                         
                         if fallback_result.returncode == 0:
                             primary_succeeded = True
-                            notes.append("Fallback succeeded")
+                            notes.append("Fallback 1 succeeded")
                         else:
-                            tool_failure = True
-                            notes.append(f"Fallback also failed ({fallback_result.returncode})")
-                            logger.warning("Fallback command also failed: %s", fallback_cmd)
+                            # Try secondary fallback (usually local LLM)
+                            if args.secondary_fallback and not used_secondary_fallback:
+                                logger.warning("First fallback failed, trying secondary fallback (local LLM)...")
+                                notes.append("Fallback 1 failed, trying local LLM")
+                                
+                                secondary_cmd = args.secondary_fallback.format(
+                                    **{k: str(v) for k, v in context.items()}
+                                )
+                                secondary_start = datetime.now(UTC)
+                                secondary_result = run_command(
+                                    secondary_cmd, cwd=repo_dir, dry_run=args.dry_run, timeout=timeout
+                                )
+                                secondary_duration = (datetime.now(UTC) - secondary_start).total_seconds()
+                                secondary_entry = {
+                                    "step": "fallback-2",
+                                    "command": secondary_cmd,
+                                    "returncode": secondary_result.returncode,
+                                    "stdout": (secondary_result.stdout or "").strip(),
+                                    "stderr": (secondary_result.stderr or "").strip(),
+                                    "duration_seconds": secondary_duration,
+                                }
+                                analysis_log.append(secondary_entry)
+                                used_secondary_fallback = True
+                                
+                                if secondary_result.returncode == 0:
+                                    primary_succeeded = True
+                                    notes.append("Local LLM fallback succeeded")
+                                else:
+                                    tool_failure = True
+                                    notes.append(f"All fallbacks failed")
+                                    logger.warning("All fallback commands failed")
+                            else:
+                                tool_failure = True
+                                notes.append(f"Fallback failed ({fallback_result.returncode})")
+                                logger.warning("Fallback command failed: %s", fallback_cmd)
                     else:
                         tool_failure = True
                         notes.append(f"{command.split()[0]} returned {result.returncode}")
@@ -612,6 +648,11 @@ def main() -> None:
         "--fallback-codex",
         action="store_true",
         help="Use codex-command as fallback only when gemini fails (quota/rate limit/error).",
+    )
+    parser.add_argument(
+        "--secondary-fallback",
+        default=None,
+        help="Optional secondary fallback command (e.g., local LLM) when both primary and codex fail.",
     )
     parser.add_argument(
         "--workers", type=int, default=4, help="Number of concurrent workers."
