@@ -8,6 +8,7 @@
 work/
 logs/
 results/
+qdrant_data/
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CREDENTIALS & SECRETS (NEVER commit these!)

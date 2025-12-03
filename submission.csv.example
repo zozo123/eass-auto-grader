@@ -1,4 +1,4 @@
-student_name,email,repo_url
-"John Doe",john@example.com,https://github.com/org/student-project-1
-"Jane Smith",jane@example.com,https://github.com/org/student-project-2
-"Bob Wilson",bob@example.com,https://github.com/org/student-project-3
+timestamp,email,student_name,q1,q2,q3,repo_url
+01/01/2025 10:00:00,student1@example.com,Student One,Yes,Yes,Yes,https://github.com/your-org/project-1
+01/01/2025 10:05:00,student2@example.com,Student Two,Yes,Yes,Yes,https://github.com/your-org/project-2
+01/01/2025 10:10:00,student3@example.com,Student Three,Yes,Yes,Yes,https://github.com/your-org/project-3
