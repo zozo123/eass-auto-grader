@@ -77,7 +77,7 @@ make run-all      # all submissions, in parallel ($WORKERS workers)
 ./run.sh --help
 ```
 
-`run.sh` sends `gemini_prompt.txt` (Gemini) or `codex_prompt.txt` (Codex) to the model; both currently match `prompt.txt`. Results are written to `results/`: `REPORT.md`, `index.md`, `ranked_list.csv` and `evaluation.json`. Raw scores (0-10) are mapped to the range set by `SCORE_SCALE_MIN`/`SCORE_SCALE_MAX`.
+`run.sh` sends `gemini_prompt.txt` (Gemini) or `codex_prompt.txt` (Codex) to the model; both currently match `prompt.txt`. Results are written to `results/`: `index.md` (ranking), `ranked_list.csv` and `evaluation.json`. Raw scores (0-10) are rescaled across the batch: the lowest score above 1 maps to `SCORE_SCALE_MIN`, the highest to `SCORE_SCALE_MAX`, and scores of 1 or below (or failed clones) get 0.
 
 ### 5. Compare Repositories
 
@@ -101,7 +101,7 @@ uv run python scripts/creativity_assessment.py --root work --repo-subdir repo
 
 | Script | Description |
 |--------|-------------|
-| `run_evaluation.py` | Core evaluation runner |
+| `run_evaluation.py` | Sequential evaluation runner (not used by `run.sh`); also writes `REPORT.md` |
 | `run_evaluation_parallel.py` | Evaluation runner used by `run.sh` (sequential or parallel) |
 | `models.py` | Pydantic schema for the grading JSON |
 | `generate_prompt.py` | Builds a grading prompt with the embedded JSON schema |
@@ -117,7 +117,6 @@ uv run python scripts/creativity_assessment.py --root work --repo-subdir repo
 | `creativity_assessment.py` | Originality and effort scoring |
 | `generate_plagiarism_html.py` | HTML plagiarism report |
 | `generate_combined_report.py` | Combined analysis report |
-| `show_pairs.py` | Display similarity pairs |
 
 ## Similarity Metrics
 
@@ -215,11 +214,11 @@ make clean             # Remove work/
 ## Output Files
 
 Results are saved in the `results/` directory:
-- `REPORT.md`, `index.md`, `ranked_list.csv`, `evaluation.json` - Grading results
-- `similarity_*.json` - Raw similarity scores
-- `deep_analysis_results.json` - 17-dimension analysis
-- `*_heatmap.png` - Visualization plots
-- `*.html` - Interactive reports
+- `index.md`, `ranked_list.csv`, `evaluation.json` - Grading results
+- `repo_similarity*.csv`, `similarity_matrix.csv`, `smart_similarity.csv` - Similarity scores
+- `deep_analysis/` - Deep analysis (`deep_analyses.json`, `deep_similarity.csv`, `clusters.json`) and its plots
+- `plots/` - Heatmap and top-pair plots from `make compare-quick`
+- `plagiarism_report.html`, `combined_analysis_report.html` - HTML reports
 
 ## Project Structure
 
