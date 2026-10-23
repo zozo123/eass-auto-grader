@@ -52,31 +52,39 @@ def generate_prompt() -> str:
 
 def main():
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Generate grading prompt with schema")
-    parser.add_argument("-o", "--output", type=Path, help="Output file (default: stdout)")
-    parser.add_argument("--gemini", action="store_true", help="Output to gemini_prompt.txt")
-    parser.add_argument("--codex", action="store_true", help="Output to codex_prompt.txt")
-    parser.add_argument("--both", action="store_true", help="Output to both prompt files")
-    
+    parser.add_argument(
+        "-o", "--output", type=Path, help="Output file (default: stdout)"
+    )
+    parser.add_argument(
+        "--gemini", action="store_true", help="Output to gemini_prompt.txt"
+    )
+    parser.add_argument(
+        "--codex", action="store_true", help="Output to codex_prompt.txt"
+    )
+    parser.add_argument(
+        "--both", action="store_true", help="Output to both prompt files"
+    )
+
     args = parser.parse_args()
-    
+
     prompt = generate_prompt()
-    
+
     if args.both or args.gemini:
         gemini_path = Path(__file__).parent.parent / "gemini_prompt.txt"
         gemini_path.write_text(prompt)
         print(f"✅ Written to {gemini_path}")
-    
+
     if args.both or args.codex:
         codex_path = Path(__file__).parent.parent / "codex_prompt.txt"
         codex_path.write_text(prompt)
         print(f"✅ Written to {codex_path}")
-    
+
     if args.output:
         args.output.write_text(prompt)
         print(f"✅ Written to {args.output}")
-    
+
     if not (args.both or args.gemini or args.codex or args.output):
         print(prompt)
 

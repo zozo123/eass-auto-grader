@@ -17,12 +17,12 @@ def load_deep_analysis(results_dir: Path) -> Tuple[List[dict], List[dict], Dict]
     analyses = []
     similarities = []
     clusters = {}
-    
+
     analyses_file = results_dir / "deep_analyses.json"
     if analyses_file.exists():
         with open(analyses_file) as f:
             analyses = json.load(f)
-    
+
     sim_file = results_dir / "deep_similarity.csv"
     if sim_file.exists():
         with open(sim_file) as f:
@@ -30,23 +30,25 @@ def load_deep_analysis(results_dir: Path) -> Tuple[List[dict], List[dict], Dict]
             for line in lines:
                 parts = line.strip().split(",")
                 if len(parts) >= 8:
-                    similarities.append({
-                        "repo1": parts[0],
-                        "repo2": parts[1],
-                        "combined": float(parts[2]),
-                        "fingerprint": float(parts[3]),
-                        "semantic": float(parts[4]),
-                        "api_design": float(parts[5]),
-                        "architecture": float(parts[6]),
-                        "dependencies": float(parts[7]),
-                        "style": float(parts[8]) if len(parts) > 8 else 0.0,
-                    })
-    
+                    similarities.append(
+                        {
+                            "repo1": parts[0],
+                            "repo2": parts[1],
+                            "combined": float(parts[2]),
+                            "fingerprint": float(parts[3]),
+                            "semantic": float(parts[4]),
+                            "api_design": float(parts[5]),
+                            "architecture": float(parts[6]),
+                            "dependencies": float(parts[7]),
+                            "style": float(parts[8]) if len(parts) > 8 else 0.0,
+                        }
+                    )
+
     clusters_file = results_dir / "clusters.json"
     if clusters_file.exists():
         with open(clusters_file) as f:
             clusters = json.load(f)
-    
+
     return analyses, similarities, clusters
 
 
@@ -60,7 +62,9 @@ def load_plagiarism_results(results_dir: Path) -> List[dict]:
     return []
 
 
-def classify_risk(fingerprint: float, semantic: float, api: float, arch: float) -> Tuple[str, str]:
+def classify_risk(
+    fingerprint: float, semantic: float, api: float, arch: float
+) -> Tuple[str, str]:
     """Classify plagiarism risk based on multiple metrics."""
     if fingerprint >= 0.15:
         return "HIGH", "#ff4444"
@@ -74,38 +78,35 @@ def classify_risk(fingerprint: float, semantic: float, api: float, arch: float) 
 
 def generate_html_report(deep_dir: Path, plagiarism_dir: Path, output_file: Path):
     """Generate combined HTML report."""
-    
+
     analyses, similarities, clusters = load_deep_analysis(deep_dir)
     plagiarism_pairs = load_plagiarism_results(plagiarism_dir)
-    
+
     # Build plagiarism lookup
     plagiarism_lookup = {}
     for p in plagiarism_pairs:
         key = tuple(sorted([p["repo1"], p["repo2"]]))
         plagiarism_lookup[key] = p
-    
+
     # Classify all pairs
     classified_pairs = []
     for sim in similarities:
         risk, color = classify_risk(
-            sim["fingerprint"],
-            sim["semantic"],
-            sim["api_design"],
-            sim["architecture"]
+            sim["fingerprint"], sim["semantic"], sim["api_design"], sim["architecture"]
         )
         sim["risk"] = risk
         sim["color"] = color
-        
+
         # Check if also flagged by plagiarism detector
         key = tuple(sorted([sim["repo1"], sim["repo2"]]))
         sim["plagiarism_data"] = plagiarism_lookup.get(key)
-        
+
         classified_pairs.append(sim)
-    
+
     # Sort by risk then by fingerprint
     risk_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "OK": 3}
     classified_pairs.sort(key=lambda x: (risk_order[x["risk"]], -x["fingerprint"]))
-    
+
     # Generate HTML
     html_content = f"""<!DOCTYPE html>
 <html>
@@ -305,20 +306,20 @@ def generate_html_report(deep_dir: Path, plagiarism_dir: Path, output_file: Path
             <div class="stat-label">Repositories</div>
         </div>
         <div class="stat-card">
-            <div class="stat-value high">{len([p for p in classified_pairs if p['risk'] == 'HIGH'])}</div>
+            <div class="stat-value high">{len([p for p in classified_pairs if p["risk"] == "HIGH"])}</div>
             <div class="stat-label">High Risk Pairs</div>
         </div>
         <div class="stat-card">
-            <div class="stat-value medium">{len([p for p in classified_pairs if p['risk'] == 'MEDIUM'])}</div>
+            <div class="stat-value medium">{len([p for p in classified_pairs if p["risk"] == "MEDIUM"])}</div>
             <div class="stat-label">Medium Risk Pairs</div>
         </div>
         <div class="stat-card">
-            <div class="stat-value low">{len([p for p in classified_pairs if p['risk'] == 'LOW'])}</div>
+            <div class="stat-value low">{len([p for p in classified_pairs if p["risk"] == "LOW"])}</div>
             <div class="stat-label">Low Risk Pairs</div>
         </div>
     </div>
 """
-    
+
     # Add visualizations section
     html_content += """
     <div class="section">
@@ -353,7 +354,7 @@ def generate_html_report(deep_dir: Path, plagiarism_dir: Path, output_file: Path
         </div>
     </div>
 """
-    
+
     # Add flagged pairs section
     html_content += """
     <div class="section">
@@ -380,40 +381,40 @@ def generate_html_report(deep_dir: Path, plagiarism_dir: Path, output_file: Path
             </thead>
             <tbody>
 """
-    
+
     # Only show top 50 pairs (most suspicious)
     for i, pair in enumerate(classified_pairs[:50]):
         row_class = f"risk-row-{pair['risk']}"
         html_content += f"""
-                <tr class="{row_class}" data-risk="{pair['risk']}">
-                    <td><span class="risk-badge risk-{pair['risk']}">{pair['risk']}</span></td>
-                    <td>{html.escape(pair['repo1'])}</td>
-                    <td>{html.escape(pair['repo2'])}</td>
+                <tr class="{row_class}" data-risk="{pair["risk"]}">
+                    <td><span class="risk-badge risk-{pair["risk"]}">{pair["risk"]}</span></td>
+                    <td>{html.escape(pair["repo1"])}</td>
+                    <td>{html.escape(pair["repo2"])}</td>
                     <td>
                         <div class="metric-bar">
-                            <div class="metric-fill fingerprint-fill" style="width: {pair['fingerprint']*100:.0f}%"></div>
+                            <div class="metric-fill fingerprint-fill" style="width: {pair["fingerprint"] * 100:.0f}%"></div>
                         </div>
-                        <small>{pair['fingerprint']:.3f}</small>
+                        <small>{pair["fingerprint"]:.3f}</small>
                     </td>
                     <td>
                         <div class="metric-bar">
-                            <div class="metric-fill semantic-fill" style="width: {pair['semantic']*100:.0f}%"></div>
+                            <div class="metric-fill semantic-fill" style="width: {pair["semantic"] * 100:.0f}%"></div>
                         </div>
-                        <small>{pair['semantic']:.3f}</small>
+                        <small>{pair["semantic"]:.3f}</small>
                     </td>
                     <td>
                         <div class="metric-bar">
-                            <div class="metric-fill api-fill" style="width: {pair['api_design']*100:.0f}%"></div>
+                            <div class="metric-fill api-fill" style="width: {pair["api_design"] * 100:.0f}%"></div>
                         </div>
-                        <small>{pair['api_design']:.3f}</small>
+                        <small>{pair["api_design"]:.3f}</small>
                     </td>
                     <td>
                         <div class="metric-bar">
-                            <div class="metric-fill arch-fill" style="width: {pair['architecture']*100:.0f}%"></div>
+                            <div class="metric-fill arch-fill" style="width: {pair["architecture"] * 100:.0f}%"></div>
                         </div>
-                        <small>{pair['architecture']:.3f}</small>
+                        <small>{pair["architecture"]:.3f}</small>
                     </td>
-                    <td><strong>{pair['combined']:.3f}</strong></td>
+                    <td><strong>{pair["combined"]:.3f}</strong></td>
                     <td>
                         <button class="toggle-btn" onclick="toggleDetails({i})">Details</button>
                     </td>
@@ -423,42 +424,42 @@ def generate_html_report(deep_dir: Path, plagiarism_dir: Path, output_file: Path
                         <div class="pair-details show">
                             <h4>Similarity Breakdown</h4>
                             <ul>
-                                <li><strong>Fingerprint Match:</strong> {pair['fingerprint']:.1%} - Direct code overlap detected via n-gram fingerprinting</li>
-                                <li><strong>Semantic Similarity:</strong> {pair['semantic']:.1%} - Similar variable/function names and code semantics</li>
-                                <li><strong>API Design:</strong> {pair['api_design']:.1%} - Similar endpoint structure and patterns</li>
-                                <li><strong>Architecture:</strong> {pair['architecture']:.1%} - Similar file structure and organization</li>
-                                <li><strong>Dependencies:</strong> {pair['dependencies']:.1%} - Same libraries used</li>
-                                <li><strong>Code Style:</strong> {pair['style']:.1%} - Similar formatting and naming conventions</li>
+                                <li><strong>Fingerprint Match:</strong> {pair["fingerprint"]:.1%} - Direct code overlap detected via n-gram fingerprinting</li>
+                                <li><strong>Semantic Similarity:</strong> {pair["semantic"]:.1%} - Similar variable/function names and code semantics</li>
+                                <li><strong>API Design:</strong> {pair["api_design"]:.1%} - Similar endpoint structure and patterns</li>
+                                <li><strong>Architecture:</strong> {pair["architecture"]:.1%} - Similar file structure and organization</li>
+                                <li><strong>Dependencies:</strong> {pair["dependencies"]:.1%} - Same libraries used</li>
+                                <li><strong>Code Style:</strong> {pair["style"]:.1%} - Similar formatting and naming conventions</li>
                             </ul>
 """
-        
+
         # Add plagiarism data if available
         if pair.get("plagiarism_data"):
             pdata = pair["plagiarism_data"]
             html_content += f"""
                             <h4>Previous Plagiarism Analysis</h4>
                             <ul>
-                                <li><strong>Plagiarism Score:</strong> {pdata.get('score', 0):.2f}</li>
-                                <li><strong>Category:</strong> {pdata.get('category', 'Unknown')}</li>
+                                <li><strong>Plagiarism Score:</strong> {pdata.get("score", 0):.2f}</li>
+                                <li><strong>Category:</strong> {pdata.get("category", "Unknown")}</li>
                             </ul>
 """
             if pdata.get("evidence"):
                 html_content += "                            <h4>Evidence</h4>\n"
                 for ev in pdata["evidence"][:3]:
                     html_content += f"                            <div class='code-diff'>{html.escape(str(ev))}</div>\n"
-        
+
         html_content += """
                         </div>
                     </td>
                 </tr>
 """
-    
+
     html_content += """
             </tbody>
         </table>
     </div>
 """
-    
+
     # Add clusters section
     if clusters:
         html_content += """
@@ -467,12 +468,14 @@ def generate_html_report(deep_dir: Path, plagiarism_dir: Path, output_file: Path
         <p>Repositories grouped by overall similarity (not necessarily indicating plagiarism)</p>
 """
         # Handle different cluster data formats
-        cluster_list = clusters.get("clusters", []) if isinstance(clusters, dict) else []
+        cluster_list = (
+            clusters.get("clusters", []) if isinstance(clusters, dict) else []
+        )
         if isinstance(clusters, dict) and "clusters" in clusters:
             cluster_list = clusters["clusters"]
         elif isinstance(clusters, dict):
             cluster_list = list(clusters.values())
-        
+
         for i, repos in enumerate(cluster_list):
             if isinstance(repos, list) and len(repos) > 1:
                 html_content += f"""
@@ -488,7 +491,7 @@ def generate_html_report(deep_dir: Path, plagiarism_dir: Path, output_file: Path
         </div>
 """
         html_content += "    </div>\n"
-    
+
     # JavaScript for interactivity
     html_content += """
     <script>
@@ -520,10 +523,10 @@ def generate_html_report(deep_dir: Path, plagiarism_dir: Path, output_file: Path
 </body>
 </html>
 """
-    
+
     with open(output_file, "w") as f:
         f.write(html_content)
-    
+
     print(f"✅ Combined report saved to {output_file}")
 
 
@@ -531,11 +534,11 @@ def main():
     results_dir = Path("results")
     deep_dir = results_dir / "deep_analysis"
     output_file = results_dir / "combined_analysis_report.html"
-    
+
     if not deep_dir.exists():
         print("Error: Run deep_analysis.py first")
         return
-    
+
     generate_html_report(deep_dir, results_dir, output_file)
 
 

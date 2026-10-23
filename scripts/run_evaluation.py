@@ -138,12 +138,16 @@ def validate_json_file(path: Path) -> Dict[str, Any]:
                 status["error"] = "empty file"
                 return status
             data = json.loads(content)
-            
+
         # Check for quota/rate limit errors in the response
-        status["quota_exceeded"], status["rate_limited"] = detect_quota_error(data, content)
-        
+        status["quota_exceeded"], status["rate_limited"] = detect_quota_error(
+            data, content
+        )
+
         if status["quota_exceeded"] or status["rate_limited"]:
-            status["error"] = "quota_exceeded" if status["quota_exceeded"] else "rate_limited"
+            status["error"] = (
+                "quota_exceeded" if status["quota_exceeded"] else "rate_limited"
+            )
         else:
             status["valid"] = True
     except json.JSONDecodeError as exc:
@@ -155,23 +159,23 @@ def validate_json_file(path: Path) -> Dict[str, Any]:
 
 def detect_quota_error(data: Any, raw_content: str = "") -> tuple[bool, bool]:
     """Detect quota/rate limit errors from AI provider responses.
-    
+
     Handles errors from:
     - Gemini CLI (OAuth-based, outputs JSON with error field)
     - Codex CLI (outputs JSON with status/message)
     - Gemini API (HTTP errors in JSON response)
     - Local LLM (connection errors, model errors)
-    
+
     Returns:
         tuple: (quota_exceeded, rate_limited)
     """
     quota_exceeded = False
     rate_limited = False
-    
+
     # === Quota/billing error patterns ===
     quota_patterns = [
         "quota exceeded",
-        "quota_exceeded", 
+        "quota_exceeded",
         "resource exhausted",
         "resourceexhausted",
         "billing",
@@ -186,7 +190,7 @@ def detect_quota_error(data: Any, raw_content: str = "") -> tuple[bool, bool]:
         "unauthorized",
         "authentication failed",
     ]
-    
+
     # === Rate limit patterns ===
     rate_limit_patterns = [
         "rate limit",
@@ -204,7 +208,7 @@ def detect_quota_error(data: Any, raw_content: str = "") -> tuple[bool, bool]:
         "context length exceeded",
         "max.* tokens",
     ]
-    
+
     # === CLI-specific error patterns ===
     cli_error_patterns = [
         # Gemini CLI errors
@@ -217,7 +221,7 @@ def detect_quota_error(data: Any, raw_content: str = "") -> tuple[bool, bool]:
         "could not resolve",
         "ssl error",
         "certificate",
-        # Codex CLI errors  
+        # Codex CLI errors
         "openai error",
         "api error",
         "model not found",
@@ -225,33 +229,35 @@ def detect_quota_error(data: Any, raw_content: str = "") -> tuple[bool, bool]:
         "service unavailable",
         "internal server error",
         "bad gateway",
-        "502", "503", "504",
+        "502",
+        "503",
+        "504",
         # Local LLM errors
         "connection reset",
         "broken pipe",
         "server not responding",
     ]
-    
+
     # Check raw content (case-insensitive)
     content_lower = raw_content.lower()
-    
+
     for pattern in quota_patterns:
         if pattern in content_lower:
             quota_exceeded = True
             break
-    
+
     for pattern in rate_limit_patterns:
         if pattern in content_lower:
             rate_limited = True
             break
-    
+
     # CLI errors often mean we should try another provider
     for pattern in cli_error_patterns:
         if pattern in content_lower:
             # Treat connection/API errors as rate-limit-like (recoverable with different provider)
             rate_limited = True
             break
-    
+
     # Check structured error responses
     if isinstance(data, dict):
         # === Gemini CLI error format ===
@@ -261,14 +267,17 @@ def detect_quota_error(data: Any, raw_content: str = "") -> tuple[bool, bool]:
             error_code = str(error.get("code", "")).lower()
             error_status = str(error.get("status", "")).lower()
             error_message = str(error.get("message", "")).lower()
-            
+
             all_error_text = f"{error_code} {error_status} {error_message}"
-            
-            if any(p in all_error_text for p in ["resource_exhausted", "quota", "billing", "permission"]):
+
+            if any(
+                p in all_error_text
+                for p in ["resource_exhausted", "quota", "billing", "permission"]
+            ):
                 quota_exceeded = True
             if any(p in all_error_text for p in ["429", "rate", "throttl", "too many"]):
                 rate_limited = True
-        
+
         # === Simple error string at top level ===
         if "error" in data and isinstance(data["error"], str):
             error_str = data["error"].lower()
@@ -276,7 +285,7 @@ def detect_quota_error(data: Any, raw_content: str = "") -> tuple[bool, bool]:
                 quota_exceeded = True
             if any(p in error_str for p in rate_limit_patterns + cli_error_patterns):
                 rate_limited = True
-                
+
         # === Codex CLI error format ===
         # {"status": "error", "message": "..."}
         if data.get("status") == "error":
@@ -285,19 +294,21 @@ def detect_quota_error(data: Any, raw_content: str = "") -> tuple[bool, bool]:
                 quota_exceeded = True
             if any(p in msg for p in rate_limit_patterns + cli_error_patterns):
                 rate_limited = True
-        
+
         # === Check if response has expected structure ===
         # Valid evaluation should have scores or final_score
         has_valid_structure = (
-            "final_score" in data or 
-            "scores" in data or
-            ("response" in data and len(str(data.get("response", ""))) > 100)
+            "final_score" in data
+            or "scores" in data
+            or ("response" in data and len(str(data.get("response", ""))) > 100)
         )
-        
+
         # If we got JSON but it's just an error wrapper, mark as rate limited
-        if not has_valid_structure and ("error" in data or data.get("status") == "error"):
+        if not has_valid_structure and (
+            "error" in data or data.get("status") == "error"
+        ):
             rate_limited = True
-    
+
     return quota_exceeded, rate_limited
 
 
@@ -442,11 +453,11 @@ def parse_gemini_evaluation(
             # Find ALL JSON blocks in the response (model may output multiple iterations)
             # We want the LAST complete one with a valid final_score
             json_blocks = []
-            
+
             # Find all ```json ... ``` blocks
-            json_pattern = r'```(?:json)?\s*(\{[\s\S]*?\})\s*```'
+            json_pattern = r"```(?:json)?\s*(\{[\s\S]*?\})\s*```"
             matches = re.findall(json_pattern, response_str)
-            
+
             for match in matches:
                 try:
                     parsed = json.loads(match)
@@ -454,7 +465,7 @@ def parse_gemini_evaluation(
                         json_blocks.append(parsed)
                 except json.JSONDecodeError:
                     continue
-            
+
             # If we found valid JSON blocks, use the last one with best data
             if json_blocks:
                 # Prefer the last block with a non-zero final_score
@@ -902,7 +913,9 @@ def generate_report(entries: List[Dict[str, Any]], results_dir: Path) -> None:
                 missing.append("Dockerfile")
             if not file_inv.get("has_tests_dir"):
                 missing.append("tests")
-            if not file_inv.get("has_requirements") and not file_inv.get("has_pyproject"):
+            if not file_inv.get("has_requirements") and not file_inv.get(
+                "has_pyproject"
+            ):
                 missing.append("requirements.txt/pyproject.toml")
             if missing:
                 missing_files_entries.append((e["student_name"], missing))
@@ -1229,7 +1242,7 @@ def apply_normalization(entries: List[Dict[str, Any]]) -> None:
     scale_min = float(os.environ.get("SCORE_SCALE_MIN", 87))
     scale_max = float(os.environ.get("SCORE_SCALE_MAX", 99))
     scale_range = scale_max - scale_min
-    
+
     non_terrible = [
         entry
         for entry in entries
@@ -1512,25 +1525,40 @@ def main() -> None:
                         validation = validate_json_file(
                             artifacts_dir / validation_target
                         )
-                        
+
                         # Also check stderr for CLI errors (rate limits, connection issues)
                         stderr_lower = (result.stderr or "").lower()
-                        if not validation.get("quota_exceeded") and not validation.get("rate_limited"):
+                        if not validation.get("quota_exceeded") and not validation.get(
+                            "rate_limited"
+                        ):
                             # Check stderr for error patterns
-                            stderr_quota, stderr_rate = detect_quota_error({}, stderr_lower)
+                            stderr_quota, stderr_rate = detect_quota_error(
+                                {}, stderr_lower
+                            )
                             if stderr_quota:
                                 validation["quota_exceeded"] = True
-                                validation["error"] = validation.get("error", "") + " (stderr: quota)"
+                                validation["error"] = (
+                                    validation.get("error", "") + " (stderr: quota)"
+                                )
                             if stderr_rate:
                                 validation["rate_limited"] = True
-                                validation["error"] = validation.get("error", "") + " (stderr: rate limit)"
-                        
+                                validation["error"] = (
+                                    validation.get("error", "")
+                                    + " (stderr: rate limit)"
+                                )
+
                         # Also mark as error if command failed and output is missing/empty
                         if result.returncode != 0 and not validation.get("valid"):
-                            if not validation.get("rate_limited") and not validation.get("quota_exceeded"):
-                                validation["rate_limited"] = True  # Treat CLI failure as rate-limit-like
-                                validation["error"] = f"CLI exit code {result.returncode}"
-                        
+                            if not validation.get(
+                                "rate_limited"
+                            ) and not validation.get("quota_exceeded"):
+                                validation["rate_limited"] = (
+                                    True  # Treat CLI failure as rate-limit-like
+                                )
+                                validation["error"] = (
+                                    f"CLI exit code {result.returncode}"
+                                )
+
                         analysis_log.append(
                             {
                                 "step": f"validate-json-{command_label}",
@@ -1539,9 +1567,15 @@ def main() -> None:
                         )
                         # Log quota/rate limit issues
                         if validation.get("quota_exceeded"):
-                            logger.warning("%s quota exceeded for %s", command_label.title(), slug)
+                            logger.warning(
+                                "%s quota exceeded for %s", command_label.title(), slug
+                            )
                         elif validation.get("rate_limited"):
-                            logger.warning("%s rate limited/error for %s", command_label.title(), slug)
+                            logger.warning(
+                                "%s rate limited/error for %s",
+                                command_label.title(),
+                                slug,
+                            )
                         elif validation.get("exists") and not validation.get("valid"):
                             notes.append("AI output invalid JSON")
                             append_to_log(
@@ -1568,23 +1602,24 @@ def main() -> None:
                     and args.codex_command
                 ):
                     # Check if Gemini succeeded or hit quota/rate limits
-                    gemini_ok = (
-                        result.returncode == 0 and gemini_validation.get("valid", False)
+                    gemini_ok = result.returncode == 0 and gemini_validation.get(
+                        "valid", False
                     )
-                    quota_issue = (
-                        gemini_validation.get("quota_exceeded", False) or 
-                        gemini_validation.get("rate_limited", False)
-                    )
-                    
+                    quota_issue = gemini_validation.get(
+                        "quota_exceeded", False
+                    ) or gemini_validation.get("rate_limited", False)
+
                     # Log quota/rate limit issues
                     if quota_issue:
                         if gemini_validation.get("quota_exceeded"):
-                            logger.warning("Gemini quota exceeded, switching to fallback")
+                            logger.warning(
+                                "Gemini quota exceeded, switching to fallback"
+                            )
                             notes.append("Gemini quota exceeded")
                         elif gemini_validation.get("rate_limited"):
                             logger.warning("Gemini rate limited, switching to fallback")
                             notes.append("Gemini rate limited")
-                    
+
                     if not gemini_ok or quota_issue:
                         fallback_cmd = args.codex_command.format(
                             **{k: str(v) for k, v in context.items()}
@@ -1626,10 +1661,9 @@ def main() -> None:
                         elif codex_validation.get("rate_limited"):
                             notes.append("Codex rate limited")
                             logger.warning("Codex also hit rate limits")
-                        elif (
-                            codex_validation.get("exists")
-                            and not codex_validation.get("valid")
-                        ):
+                        elif codex_validation.get(
+                            "exists"
+                        ) and not codex_validation.get("valid"):
                             notes.append("AI output invalid JSON (fallback)")
                             append_to_log(
                                 artifacts_dir / "errors.log",
@@ -1643,18 +1677,20 @@ def main() -> None:
             score_filename = args.score_file
             if args.fallback_codex and codex_command_ran:
                 gemini_ok = gemini_validation.get("valid", False)
-                gemini_quota_issue = (
-                    gemini_validation.get("quota_exceeded", False) or
-                    gemini_validation.get("rate_limited", False)
-                )
+                gemini_quota_issue = gemini_validation.get(
+                    "quota_exceeded", False
+                ) or gemini_validation.get("rate_limited", False)
                 codex_ok = codex_validation.get("valid", False)
-                codex_quota_issue = (
-                    codex_validation.get("quota_exceeded", False) or
-                    codex_validation.get("rate_limited", False)
-                )
-                
+                codex_quota_issue = codex_validation.get(
+                    "quota_exceeded", False
+                ) or codex_validation.get("rate_limited", False)
+
                 # Use Codex if Gemini failed/quota OR if Codex is valid and Gemini isn't
-                if (not gemini_ok or gemini_quota_issue) and codex_ok and not codex_quota_issue:
+                if (
+                    (not gemini_ok or gemini_quota_issue)
+                    and codex_ok
+                    and not codex_quota_issue
+                ):
                     score_filename = "codex.json"
                     if gemini_quota_issue:
                         notes.append("Used Codex fallback (Gemini quota)")

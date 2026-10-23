@@ -28,9 +28,11 @@ from pydantic import ValidationError
 from models import GradingResponse
 
 
-def validate_with_pydantic(json_data: dict, logger: logging.Logger) -> Optional[GradingResponse]:
+def validate_with_pydantic(
+    json_data: dict, logger: logging.Logger
+) -> Optional[GradingResponse]:
     """Validate JSON data against Pydantic model.
-    
+
     Returns:
         Validated GradingResponse or None if validation fails.
     """
@@ -47,91 +49,130 @@ def extract_json_from_response(text: str) -> str:
     """Extract JSON from potentially messy LLM output."""
     if not text:
         return ""
-    
+
     # Remove markdown code fences
-    text = re.sub(r'^```(?:json)?\s*', '', text, flags=re.MULTILINE)
-    text = re.sub(r'```\s*$', '', text, flags=re.MULTILINE)
-    
+    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.MULTILINE)
+    text = re.sub(r"```\s*$", "", text, flags=re.MULTILINE)
+
     # Find JSON object
-    first_brace = text.find('{')
-    last_brace = text.rfind('}')
-    
+    first_brace = text.find("{")
+    last_brace = text.rfind("}")
+
     if first_brace == -1 or last_brace == -1:
         return text.strip()
-    
-    return text[first_brace:last_brace + 1]
+
+    return text[first_brace : last_brace + 1]
 
 
 def detect_quota_error(data: Any, raw_content: str = "") -> Tuple[bool, bool]:
     """Detect quota/rate limit errors from AI provider responses.
-    
+
     Returns:
         tuple: (quota_exceeded, rate_limited)
     """
     quota_exceeded = False
     rate_limited = False
-    
+
     quota_patterns = [
-        "quota exceeded", "quota_exceeded", "resource exhausted", "resourceexhausted",
-        "billing", "payment required", "insufficient_quota", "out of quota",
-        "api key not valid", "api_key_invalid", "invalid api key",
-        "permission denied", "access denied", "unauthorized", "authentication failed",
+        "quota exceeded",
+        "quota_exceeded",
+        "resource exhausted",
+        "resourceexhausted",
+        "billing",
+        "payment required",
+        "insufficient_quota",
+        "out of quota",
+        "api key not valid",
+        "api_key_invalid",
+        "invalid api key",
+        "permission denied",
+        "access denied",
+        "unauthorized",
+        "authentication failed",
     ]
-    
+
     rate_limit_patterns = [
-        "rate limit", "rate_limit", "ratelimit", "too many requests", "429",
-        "throttl", "slow down", "retry after", "requests per minute",
-        "rpm limit", "tpm limit", "token limit", "context length exceeded",
+        "rate limit",
+        "rate_limit",
+        "ratelimit",
+        "too many requests",
+        "429",
+        "throttl",
+        "slow down",
+        "retry after",
+        "requests per minute",
+        "rpm limit",
+        "tpm limit",
+        "token limit",
+        "context length exceeded",
     ]
-    
+
     cli_error_patterns = [
-        "error when talking to gemini", "failed to connect", "connection refused",
-        "network error", "timeout", "timed out", "could not resolve", "ssl error",
-        "openai error", "api error", "model not found", "service unavailable",
-        "internal server error", "bad gateway", "502", "503", "504",
-        "connection reset", "broken pipe", "server not responding",
+        "error when talking to gemini",
+        "failed to connect",
+        "connection refused",
+        "network error",
+        "timeout",
+        "timed out",
+        "could not resolve",
+        "ssl error",
+        "openai error",
+        "api error",
+        "model not found",
+        "service unavailable",
+        "internal server error",
+        "bad gateway",
+        "502",
+        "503",
+        "504",
+        "connection reset",
+        "broken pipe",
+        "server not responding",
     ]
-    
+
     content_lower = raw_content.lower()
-    
+
     for pattern in quota_patterns:
         if pattern in content_lower:
             quota_exceeded = True
             break
-    
+
     for pattern in rate_limit_patterns:
         if pattern in content_lower:
             rate_limited = True
             break
-    
+
     for pattern in cli_error_patterns:
         if pattern in content_lower:
             rate_limited = True
             break
-    
+
     if isinstance(data, dict):
         error = data.get("error", {})
         if isinstance(error, dict):
             all_error_text = f"{error.get('code', '')} {error.get('status', '')} {error.get('message', '')}".lower()
-            if any(p in all_error_text for p in ["resource_exhausted", "quota", "billing", "permission"]):
+            if any(
+                p in all_error_text
+                for p in ["resource_exhausted", "quota", "billing", "permission"]
+            ):
                 quota_exceeded = True
             if any(p in all_error_text for p in ["429", "rate", "throttl", "too many"]):
                 rate_limited = True
-        
+
         if "error" in data and isinstance(data["error"], str):
             error_str = data["error"].lower()
             if any(p in error_str for p in quota_patterns):
                 quota_exceeded = True
             if any(p in error_str for p in rate_limit_patterns + cli_error_patterns):
                 rate_limited = True
-                
+
         if data.get("status") == "error":
             msg = str(data.get("message", "")).lower()
             if any(p in msg for p in quota_patterns):
                 quota_exceeded = True
             if any(p in msg for p in rate_limit_patterns + cli_error_patterns):
                 rate_limited = True
-    
+
     return quota_exceeded, rate_limited
 
 
@@ -237,22 +278,22 @@ def append_to_log(path: Path, contents: str) -> None:
 
 def _try_repair_json(content: str, logger: logging.Logger) -> Optional[dict]:
     """Attempt to repair common JSON issues from AI model outputs.
-    
+
     Returns parsed JSON dict if successful, None otherwise.
     """
     # First extract JSON from any surrounding text
     content = extract_json_from_response(content)
-    
+
     # Track brackets to find mismatches
     in_string = False
     escape = False
     opens = []
-    
+
     for i, c in enumerate(content):
         if escape:
             escape = False
             continue
-        if c == '\\' and in_string:
+        if c == "\\" and in_string:
             escape = True
             continue
         if c == '"' and not escape:
@@ -260,56 +301,56 @@ def _try_repair_json(content: str, logger: logging.Logger) -> Optional[dict]:
             continue
         if in_string:
             continue
-        
-        if c == '[':
-            opens.append(('[', i))
-        elif c == '{':
-            opens.append(('{', i))
-        elif c == ']':
-            if opens and opens[-1][0] == '[':
+
+        if c == "[":
+            opens.append(("[", i))
+        elif c == "{":
+            opens.append(("{", i))
+        elif c == "]":
+            if opens and opens[-1][0] == "[":
                 opens.pop()
             else:
                 # Extra ] - try removing it
                 logger.debug("Attempting to fix extra ] at position %d", i)
-                fixed = content[:i] + content[i+1:]
+                fixed = content[:i] + content[i + 1 :]
                 try:
                     return json.loads(fixed)
                 except json.JSONDecodeError:
                     pass
-        elif c == '}':
-            if opens and opens[-1][0] == '{':
+        elif c == "}":
+            if opens and opens[-1][0] == "{":
                 opens.pop()
             else:
                 # Extra } - try removing it
                 logger.debug("Attempting to fix extra } at position %d", i)
-                fixed = content[:i] + content[i+1:]
+                fixed = content[:i] + content[i + 1 :]
                 try:
                     return json.loads(fixed)
                 except json.JSONDecodeError:
                     pass
-    
+
     # Try removing trailing commas
-    fixed = re.sub(r',(\s*[}\]])', r'\1', content)
+    fixed = re.sub(r",(\s*[}\]])", r"\1", content)
     try:
         return json.loads(fixed)
     except json.JSONDecodeError:
         pass
-    
+
     # Try adding missing closing brackets
-    open_braces = content.count('{') - content.count('}')
-    open_brackets = content.count('[') - content.count(']')
-    
+    open_braces = content.count("{") - content.count("}")
+    open_brackets = content.count("[") - content.count("]")
+
     if open_braces > 0 or open_brackets > 0:
         fixed = content
         if open_brackets > 0:
-            fixed += ']' * open_brackets
+            fixed += "]" * open_brackets
         if open_braces > 0:
-            fixed += '}' * open_braces
+            fixed += "}" * open_braces
         try:
             return json.loads(fixed)
         except json.JSONDecodeError:
             pass
-    
+
     return None
 
 
@@ -317,13 +358,13 @@ def parse_score(
     artifacts_dir: Path, score_file: str, score_key: str, logger: logging.Logger
 ) -> Tuple[Optional[float], Optional[GradingResponse]]:
     """Parse score from AI output files, with Pydantic validation.
-    
+
     Returns:
         Tuple of (score, validated_response) - response may be None even if score is found.
     """
     if not score_file:
         return None, None
-    
+
     # Try the primary score file, then fallback alternatives
     score_files = [score_file]
     if score_file == "gemini.json":
@@ -332,18 +373,18 @@ def parse_score(
         score_files.extend(["gemini.json", "grading_result.json"])
     else:
         score_files.extend(["gemini.json", "codex.json", "grading_result.json"])
-    
+
     candidate = None
     for sf in score_files:
         c = artifacts_dir / sf
         if c.exists() and c.stat().st_size > 0:
             candidate = c
             break
-    
+
     if not candidate:
         logger.debug("No score file found in %s", artifacts_dir)
         return None, None
-    
+
     try:
         with candidate.open("r", encoding="utf-8") as handle:
             content = handle.read()
@@ -406,7 +447,7 @@ def parse_score(
         return validated.final_score, validated
     else:
         logger.warning("⚠️ Pydantic validation failed, falling back to key extraction")
-    
+
     # Fallback: extract score by key path
     value = payload
     for segment in score_key.split("."):
@@ -429,7 +470,7 @@ def apply_normalization(entries: List[Dict[str, object]]) -> None:
     scale_min = float(os.environ.get("SCORE_SCALE_MIN", 87))
     scale_max = float(os.environ.get("SCORE_SCALE_MAX", 99))
     scale_range = scale_max - scale_min
-    
+
     non_terrible = [
         entry
         for entry in entries
@@ -571,12 +612,12 @@ def evaluate_row(
                 if dst_repo.exists():
                     shutil.rmtree(dst_repo)
                 shutil.copytree(repo_dir, dst_repo)
-            
+
             # Track whether primary AI command succeeded
             primary_succeeded = False
             used_fallback = False
             used_secondary_fallback = False
-            
+
             # Build context for command templates
             context = {
                 "repo_dir": repo_dir,
@@ -586,7 +627,7 @@ def evaluate_row(
                 "student_name": student_name,
                 "timestamp": datetime.now(UTC).isoformat(),
             }
-            
+
             for idx, command_template in enumerate(commands, start=1):
                 command = command_template.format(
                     **{k: str(v) for k, v in context.items()}
@@ -614,24 +655,31 @@ def evaluate_row(
                     ]
                 )
                 append_to_log(artifacts_dir / "errors.log", log_message)
-                
+
                 # Check for formatting failures (non-critical)
                 if args.format_check and command_template == args.format_command:
                     if result.returncode != 0:
                         notes.append("Formatting check failed")
                     continue
-                
+
                 # For AI commands, check for quota/rate limit errors
                 if result.returncode != 0:
                     # Check if it's a quota/rate-limit error that needs fallback
                     combined_output = f"{result.stdout or ''}\n{result.stderr or ''}"
                     quota_err, rate_err = detect_quota_error({}, combined_output)
-                    
+
                     # Try first fallback (usually codex)
-                    if (quota_err or rate_err) and args.fallback_codex and args.codex_command and not used_fallback:
-                        logger.warning("Primary command failed (quota/rate-limit), trying fallback...")
+                    if (
+                        (quota_err or rate_err)
+                        and args.fallback_codex
+                        and args.codex_command
+                        and not used_fallback
+                    ):
+                        logger.warning(
+                            "Primary command failed (quota/rate-limit), trying fallback..."
+                        )
                         notes.append("Primary AI failed, using fallback")
-                        
+
                         # Run fallback command
                         fallback_cmd = args.codex_command.format(
                             **{k: str(v) for k, v in context.items()}
@@ -639,9 +687,14 @@ def evaluate_row(
                         logger.info("Running fallback: %s", fallback_cmd[:100])
                         fallback_start = datetime.now(UTC)
                         fallback_result = run_command(
-                            fallback_cmd, cwd=repo_dir, dry_run=args.dry_run, timeout=timeout
+                            fallback_cmd,
+                            cwd=repo_dir,
+                            dry_run=args.dry_run,
+                            timeout=timeout,
                         )
-                        fallback_duration = (datetime.now(UTC) - fallback_start).total_seconds()
+                        fallback_duration = (
+                            datetime.now(UTC) - fallback_start
+                        ).total_seconds()
                         fallback_entry = {
                             "step": "fallback-1",
                             "command": fallback_cmd,
@@ -654,21 +707,27 @@ def evaluate_row(
                         # Log fallback to errors.log too
                         append_to_log(
                             artifacts_dir / "errors.log",
-                            f"[fallback-1] {fallback_cmd}\nExit code: {fallback_result.returncode}\nStderr: {(fallback_result.stderr or '').strip()}"
+                            f"[fallback-1] {fallback_cmd}\nExit code: {fallback_result.returncode}\nStderr: {(fallback_result.stderr or '').strip()}",
                         )
                         used_fallback = True
-                        
+
                         if fallback_result.returncode == 0:
                             primary_succeeded = True
                             notes.append("Fallback 1 succeeded")
                         else:
                             tool_failure = True
-                            notes.append(f"Fallback failed ({fallback_result.returncode})")
+                            notes.append(
+                                f"Fallback failed ({fallback_result.returncode})"
+                            )
                             logger.warning("Fallback command failed: %s", fallback_cmd)
                     else:
                         tool_failure = True
-                        notes.append(f"{command.split()[0]} returned {result.returncode}")
-                        logger.warning("Command %s returned %d", command, result.returncode)
+                        notes.append(
+                            f"{command.split()[0]} returned {result.returncode}"
+                        )
+                        logger.warning(
+                            "Command %s returned %d", command, result.returncode
+                        )
                 else:
                     primary_succeeded = True
 
@@ -679,13 +738,13 @@ def evaluate_row(
         )
     else:
         score_value = None
-    
+
     if score_value is None:
         score_value = 0.0
         notes.append("Score not found")
     elif validated_response:
         notes.append("Pydantic validated ✓")
-    
+
     final_score = max(0.0, min(score_value, 10.0))
     final_percentage = round(final_score * 10.0, 2)
     status = (
@@ -710,7 +769,9 @@ def evaluate_row(
         "artifacts_dir": str(artifacts_dir),
         "analysis": analysis_log,
         "pydantic_validated": validated_response is not None,
-        "grade": validated_response.pass_fail.grade.value if validated_response else None,
+        "grade": validated_response.pass_fail.grade.value
+        if validated_response
+        else None,
     }
 
 

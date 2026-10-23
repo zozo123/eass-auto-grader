@@ -6,12 +6,13 @@ import html
 from pathlib import Path
 from datetime import datetime
 
+
 def generate_html_report(json_path: Path, output_path: Path) -> None:
     """Generate HTML report from JSON plagiarism data."""
-    
+
     with open(json_path) as f:
         data = json.load(f)
-    
+
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -152,84 +153,92 @@ def generate_html_report(json_path: Path, output_path: Path) -> None:
     
     <div class="summary">
         <div class="summary-card high">
-            <h3>{data['summary']['high_plagiarism']}</h3>
+            <h3>{data["summary"]["high_plagiarism"]}</h3>
             <p>🚨 High Plagiarism</p>
         </div>
         <div class="summary-card suspicious">
-            <h3>{data['summary']['suspicious']}</h3>
+            <h3>{data["summary"]["suspicious"]}</h3>
             <p>⚠️ Suspicious</p>
         </div>
         <div class="summary-card review">
-            <h3>{data['summary']['needs_review']}</h3>
+            <h3>{data["summary"]["needs_review"]}</h3>
             <p>📋 Needs Review</p>
         </div>
         <div class="summary-card clean">
-            <h3>{data['summary']['total_pairs_analyzed'] - data['summary']['high_plagiarism'] - data['summary']['suspicious'] - data['summary']['needs_review']}</h3>
+            <h3>{data["summary"]["total_pairs_analyzed"] - data["summary"]["high_plagiarism"] - data["summary"]["suspicious"] - data["summary"]["needs_review"]}</h3>
             <p>✅ Clean</p>
         </div>
     </div>
     
     <h2>Flagged Pairs</h2>
 """
-    
+
     # Group matches by pair
     matches_by_pair = {}
-    for match in data['detailed_matches']:
-        key = (match['repo1'], match['repo2'])
+    for match in data["detailed_matches"]:
+        key = (match["repo1"], match["repo2"])
         if key not in matches_by_pair:
             matches_by_pair[key] = []
         matches_by_pair[key].append(match)
-    
-    for pair in data['flagged_pairs']:
-        verdict_class = pair['verdict'].lower().replace('_', '-').replace('high-plagiarism', 'high').replace('needs-review', 'review')
-        verdict_emoji = {'high': '🚨', 'suspicious': '⚠️', 'review': '📋'}.get(verdict_class, '')
-        
+
+    for pair in data["flagged_pairs"]:
+        verdict_class = (
+            pair["verdict"]
+            .lower()
+            .replace("_", "-")
+            .replace("high-plagiarism", "high")
+            .replace("needs-review", "review")
+        )
+        verdict_emoji = {"high": "🚨", "suspicious": "⚠️", "review": "📋"}.get(
+            verdict_class, ""
+        )
+
         html_content += f"""
     <div class="pair">
         <div class="pair-header {verdict_class}" onclick="togglePair(this)">
-            <h3>{verdict_emoji} {html.escape(pair['repo1'])} ↔ {html.escape(pair['repo2'])}</h3>
-            <span class="score">Score: {pair['score']:.2f}</span>
+            <h3>{verdict_emoji} {html.escape(pair["repo1"])} ↔ {html.escape(pair["repo2"])}</h3>
+            <span class="score">Score: {pair["score"]:.2f}</span>
         </div>
         <div class="pair-content">
 """
-        
-        pair_matches = matches_by_pair.get((pair['repo1'], pair['repo2']), [])
+
+        pair_matches = matches_by_pair.get((pair["repo1"], pair["repo2"]), [])
         for match in pair_matches:
-            type_class = match['type']
+            type_class = match["type"]
             html_content += f"""
             <div class="match">
                 <div class="match-header">
-                    <span><strong>{html.escape(match['block1'])} ↔ {html.escape(match['block2'])}</strong> ({match['similarity']:.0%})</span>
-                    <span class="match-type {type_class}">{match['type'].replace('_', ' ').title()}</span>
+                    <span><strong>{html.escape(match["block1"])} ↔ {html.escape(match["block2"])}</strong> ({match["similarity"]:.0%})</span>
+                    <span class="match-type {type_class}">{match["type"].replace("_", " ").title()}</span>
                 </div>
                 <div class="code-comparison">
                     <div class="code-block">
-                        <h4>📁 {html.escape(match['file1'])}</h4>{html.escape(match['code1_preview'])}
+                        <h4>📁 {html.escape(match["file1"])}</h4>{html.escape(match["code1_preview"])}
                     </div>
                     <div class="code-block">
-                        <h4>📁 {html.escape(match['file2'])}</h4>{html.escape(match['code2_preview'])}
+                        <h4>📁 {html.escape(match["file2"])}</h4>{html.escape(match["code2_preview"])}
                     </div>
                 </div>
                 <div class="evidence">
                     <strong>Evidence:</strong>
                     <ul>
-                        {''.join(f'<li>{html.escape(e)}</li>' for e in match['evidence'])}
+                        {"".join(f"<li>{html.escape(e)}</li>" for e in match["evidence"])}
                     </ul>
                 </div>
             </div>
 """
-        
+
         html_content += """
         </div>
     </div>
 """
-    
+
     html_content += f"""
-    <p class="timestamp">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+    <p class="timestamp">Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
 </body>
 </html>
 """
-    
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(html_content)
     print(f"Generated HTML report: {output_path}")
@@ -237,9 +246,10 @@ def generate_html_report(json_path: Path, output_path: Path) -> None:
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", default="results/plagiarism_report.json")
     parser.add_argument("--output", default="results/plagiarism_report.html")
     args = parser.parse_args()
-    
+
     generate_html_report(Path(args.input), Path(args.output))

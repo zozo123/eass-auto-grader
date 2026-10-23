@@ -97,7 +97,7 @@ def parse_dependencies(text: str) -> list[str]:
             names.append(re.split(r"[=<>~]", line, maxsplit=1)[0].strip())
         elif "[" in line and "]" in line:
             names.append(line.split("[", 1)[0].strip())
-        elif " = " in line and "\"" in line:
+        elif " = " in line and '"' in line:
             # pyproject style: foo = "^1.2.3"
             names.append(line.split("=", 1)[0].strip().strip('"').strip("'"))
         else:
@@ -149,7 +149,9 @@ def build_embedding_text(
     file_sample = files[:max_files]
     python_files = len([f for f in files if f.endswith(".py")])
     test_files = len([f for f in files if "test" in Path(f).name.lower()])
-    has_docker = (repo_path / "Dockerfile").exists() or (repo_path / "docker-compose.yml").exists()
+    has_docker = (repo_path / "Dockerfile").exists() or (
+        repo_path / "docker-compose.yml"
+    ).exists()
     has_readme = (repo_path / "README.md").exists()
 
     readme_excerpt = read_text(repo_path / "README.md", limit=2000)
@@ -210,7 +212,9 @@ def build_embedding_text(
     return embedding_text, payload
 
 
-def ensure_collection(client: QdrantClient, collection: str, vector_size: int, reset: bool) -> None:
+def ensure_collection(
+    client: QdrantClient, collection: str, vector_size: int, reset: bool
+) -> None:
     existing = {c.name for c in client.get_collections().collections}
     if reset and collection in existing:
         client.delete_collection(collection)
@@ -219,7 +223,9 @@ def ensure_collection(client: QdrantClient, collection: str, vector_size: int, r
     if collection not in existing:
         client.create_collection(
             collection_name=collection,
-            vectors_config=qmodels.VectorParams(size=vector_size, distance=qmodels.Distance.COSINE),
+            vectors_config=qmodels.VectorParams(
+                size=vector_size, distance=qmodels.Distance.COSINE
+            ),
         )
 
 
@@ -228,7 +234,14 @@ def write_results_csv(path: Path, rows: List[dict]) -> None:
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=["repo", "match", "score", "file_overlap", "repo_path", "match_path"],
+            fieldnames=[
+                "repo",
+                "match",
+                "score",
+                "file_overlap",
+                "repo_path",
+                "match_path",
+            ],
         )
         writer.writeheader()
         writer.writerows(rows)
@@ -238,7 +251,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Compare repositories by embedding structure/metadata into Qdrant."
     )
-    parser.add_argument("--root", default="work", help="Directory containing submission folders")
+    parser.add_argument(
+        "--root", default="work", help="Directory containing submission folders"
+    )
     parser.add_argument(
         "--repo-subdir",
         default="repo",
@@ -259,9 +274,15 @@ def main() -> None:
         default=os.environ.get("EMBED_MODEL", "BAAI/bge-small-en-v1.5"),
         help="FastEmbed model name",
     )
-    parser.add_argument("--top-k", type=int, default=3, help="Top similar repos to fetch per repo")
-    parser.add_argument("--max-files", type=int, default=400, help="How many file paths to embed")
-    parser.add_argument("--reset", action="store_true", help="Drop the collection before writing")
+    parser.add_argument(
+        "--top-k", type=int, default=3, help="Top similar repos to fetch per repo"
+    )
+    parser.add_argument(
+        "--max-files", type=int, default=400, help="How many file paths to embed"
+    )
+    parser.add_argument(
+        "--reset", action="store_true", help="Drop the collection before writing"
+    )
     parser.add_argument(
         "--output",
         default="results/repo_similarity.csv",
@@ -326,7 +347,11 @@ def main() -> None:
     print(f"Indexing {len(repo_paths)} repos into Qdrant ({args.collection})...")
     for repo_path in tqdm(repo_paths, desc="Embedding repos"):
         files, lang_counts, dir_counts = collect_files(repo_path)
-        repo_name = repo_path.parent.name if repo_path.name == args.repo_subdir else repo_path.name
+        repo_name = (
+            repo_path.parent.name
+            if repo_path.name == args.repo_subdir
+            else repo_path.name
+        )
         code_snippets = sample_code_snippets(
             repo_path,
             files,
@@ -375,7 +400,9 @@ def main() -> None:
                 continue
             source_payload = repo_payloads[point.id]
             target_payload = repo_payloads.get(str(hit.id)) or hit.payload
-            overlap = len(file_sets.get(point.id, set()) & file_sets.get(str(hit.id), set()))
+            overlap = len(
+                file_sets.get(point.id, set()) & file_sets.get(str(hit.id), set())
+            )
             rows.append(
                 {
                     "repo": source_payload["repo"],
@@ -386,7 +413,10 @@ def main() -> None:
                     "match_path": target_payload.get("path"),
                 }
             )
-            if len([r for r in rows if r["repo"] == source_payload["repo"]]) >= args.top_k:
+            if (
+                len([r for r in rows if r["repo"] == source_payload["repo"]])
+                >= args.top_k
+            ):
                 break
 
     output_path = Path(args.output)
