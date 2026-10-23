@@ -1,8 +1,17 @@
-# Multi-Repo Code Analysis & Similarity Detection
+# EASS auto-grader
 
-A comprehensive tool for analyzing, comparing, and evaluating code similarities across multiple repositories. Originally designed for academic project evaluation but generic enough for any multi-repository comparison task.
+Course tooling by [Yossi Eliaz](https://zozo123.github.io/) for the EASS course at Holon Institute of Technology (HIT). `run.sh` grades student FastAPI repositories against the EX1–EX3 rubric in `prompt.txt` using Gemini CLI, the Gemini API, or Codex CLI; `make compare` flags cross-repo code similarity. Outputs are for instructor review.
 
 ## Features
+
+Grading (`run.sh`):
+
+- **Rubric-based LLM grading** of each submission repo for EX1 (backend), EX2 (fullstack) or EX3 (MVP)
+- **Providers**: Gemini CLI (default), Gemini API, or Codex CLI, with an optional fallback provider (`AI_FALLBACK_CHAIN`)
+- **Pydantic validation** of the model's JSON output (`scripts/models.py`)
+- **Parallel runs** across submissions (`--parallel --workers N`)
+
+Similarity analysis (`make compare`):
 
 - **Vector-based similarity analysis** using Qdrant and local embeddings (no API keys needed)
 - **AST-based code analysis** for structural comparison
@@ -16,14 +25,17 @@ A comprehensive tool for analyzing, comparing, and evaluating code similarities 
 
 - Python 3.11+
 - [uv](https://github.com/astral-sh/uv) (recommended) or pip
-- Docker (for Qdrant vector database)
+- [GitHub CLI](https://cli.github.com/) (`gh`), used to clone submissions during grading
+- For grading: [Gemini CLI](https://github.com/google-gemini/gemini-cli) (`npm install -g @google/gemini-cli`) and/or [Codex CLI](https://github.com/openai/codex)
+- For the format check: [ruff](https://github.com/astral-sh/ruff) (`run.sh` calls `/opt/homebrew/bin/ruff`)
+- For similarity analysis: Docker (for the Qdrant vector database)
 
 ## Quick Start
 
 ### 1. Clone and Setup
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/zozo123/eass-auto-grader.git
 cd eass-auto-grader
 
 # Install dependencies using uv
@@ -33,47 +45,56 @@ uv sync
 pip install -e .
 ```
 
-### 2. Start Qdrant
+### 2. Configure
 
 ```bash
-docker compose -f docker-compose.qdrant.yml up -d
+cp .env.example .env
 ```
+
+Set `AI_PROVIDER` (`gemini-cli`, `gemini-api` or `codex`), the model for that provider, and `AI_FALLBACK_CHAIN`. `.env.example` also has local LLM settings, but `run.sh` does not accept a `local` provider yet.
 
 ### 3. Prepare Your Data
 
-Create a `submission.csv` file with the following format:
+Create a `submission.csv` in the same format as `submission.csv.example` (a form export with seven columns):
 
 ```csv
-name,email,repo_url
-John Doe,john@example.com,https://github.com/johndoe/project
-Jane Smith,jane@example.com,https://github.com/janesmith/project
+timestamp,email,student_name,q1,q2,q3,repo_url
+01/01/2025 10:00:00,student1@example.com,Student One,Yes,Yes,Yes,https://github.com/your-org/project-1
 ```
 
-See `submission.csv.example` for reference.
+`make clone` reads these columns by position. `submission.csv` is gitignored; do not commit real student data.
 
-### 4. Clone Repositories
+### 4. Grade
 
 ```bash
-make clone
+make run          # Gemini CLI, first 5 submissions
+make run-codex    # Codex CLI, first 5 submissions
+make run-all      # all submissions, in parallel ($WORKERS workers)
+
+# Or call run.sh directly
+./run.sh --ai gemini-api --limit 5
+./run.sh --ai codex --model o3
+./run.sh --help
 ```
 
-### 5. Run Analysis
+`run.sh` sends `gemini_prompt.txt` (Gemini) or `codex_prompt.txt` (Codex) to the model; both currently match `prompt.txt`. Results are written to `results/`: `REPORT.md`, `index.md`, `ranked_list.csv` and `evaluation.json`. Raw scores (0-10) are mapped to the range set by `SCORE_SCALE_MIN`/`SCORE_SCALE_MAX`.
+
+### 5. Compare Repositories
 
 ```bash
-# Compare all repositories
-make compare
+make qdrant-up    # start Qdrant
+make clone        # clone every repo in submission.csv into work/
+make compare      # full pipeline; writes results/combined_analysis_report.html
+```
 
-# Generate deep analysis with 17 dimensions
-make deep-analysis
+Individual steps:
 
-# Visualize similarities with clustering
-make visualize-deep
-
-# Run responsible analysis (accounts for expected patterns)
-make responsible-analysis
-
-# Assess creativity/originality
-make creativity
+```bash
+make deep-analysis       # 17-dimension analysis
+make deep-visualize      # clustered heatmaps and dendrograms
+make detect-plagiarism   # fingerprint-based report (use responsibly)
+uv run python scripts/responsible_similarity_analysis.py --root work --repo-subdir repo
+uv run python scripts/creativity_assessment.py --root work --repo-subdir repo
 ```
 
 ## Analysis Scripts
@@ -81,7 +102,11 @@ make creativity
 | Script | Description |
 |--------|-------------|
 | `run_evaluation.py` | Core evaluation runner |
-| `run_evaluation_parallel.py` | Parallel evaluation for multiple repos |
+| `run_evaluation_parallel.py` | Evaluation runner used by `run.sh` (sequential or parallel) |
+| `models.py` | Pydantic schema for the grading JSON |
+| `generate_prompt.py` | Builds a grading prompt with the embedded JSON schema |
+| `grade_with_pydantic.py` | Grades one repo with Gemini or Codex and validates the output |
+| `smart_code_embeddings.py` | Multi-level code embeddings in Qdrant |
 | `compare_repos.py` | Basic similarity comparison |
 | `compare_repos_v2.py` | Advanced multi-metric comparison |
 | `deep_analysis.py` | 17-dimension comprehensive analysis |
@@ -138,7 +163,7 @@ The deep analysis covers 17 aspects grouped into categories:
 
 ## Responsible Use
 
-⚠️ **Important**: High similarity scores don't always indicate plagiarism!
+**Important:** High similarity scores don't always indicate plagiarism!
 
 Common legitimate reasons for high similarity:
 - Students following the same tutorials
@@ -156,30 +181,41 @@ Always:
 
 ### Environment Variables
 
+Grading settings (provider, models, timeout, workers, fallback, score scale) live in `.env`; see `.env.example`.
+
 ```bash
-# Optional: Customize Qdrant connection
-QDRANT_HOST=localhost
+# Optional: Customize the Qdrant connection
+QDRANT_URL=http://localhost:6333   # most comparison scripts
+QDRANT_HOST=localhost              # smart_code_embeddings.py
 QDRANT_PORT=6333
 ```
 
 ### Makefile Targets
 
 ```bash
-make help              # Show all available targets
-make clone             # Clone all repositories
-make build             # Build Docker images
-make test              # Run tests
-make compare           # Run comparison analysis
+make help              # Show the main targets
+make run               # Grade the first 5 submissions with Gemini CLI
+make run-codex         # Grade the first 5 submissions with Codex CLI
+make run-all           # Grade all submissions in parallel
+make run-limit N=3     # Grade the first N submissions
+make test              # Smoke run: grade one submission
+make clone             # Clone all repositories from submission.csv
+make compare           # Full similarity pipeline
+make compare-quick     # Basic comparison and plots
 make deep-analysis     # 17-dimension analysis
-make responsible       # Context-aware analysis
-make creativity        # Originality assessment
+make deep-visualize    # Visualize the deep analysis
+make detect-plagiarism # Fingerprint-based report
+make combined-report   # Build and open the combined HTML report
 make qdrant-up         # Start Qdrant container
 make qdrant-down       # Stop Qdrant container
+make lint              # Lint scripts with ruff
+make clean             # Remove work/
 ```
 
 ## Output Files
 
 Results are saved in the `results/` directory:
+- `REPORT.md`, `index.md`, `ranked_list.csv`, `evaluation.json` - Grading results
 - `similarity_*.json` - Raw similarity scores
 - `deep_analysis_results.json` - 17-dimension analysis
 - `*_heatmap.png` - Visualization plots
@@ -194,12 +230,15 @@ Results are saved in the `results/` directory:
 │   ├── compare_repos_v2.py
 │   ├── deep_analysis.py
 │   └── ...
-├── examples/                # Example configurations
+├── examples/                # Example inputs (placeholders only)
 ├── work/                    # Cloned repositories (gitignored)
 ├── results/                 # Analysis outputs (gitignored)
 ├── logs/                    # Log files (gitignored)
 ├── submission.csv           # Your data file (gitignored)
 ├── submission.csv.example   # Example format
+├── run.sh                   # Grading entry point
+├── prompt.txt               # EX1-EX3 grading rubric prompt
+├── .env.example             # Provider and grading settings
 ├── docker-compose.qdrant.yml
 ├── Makefile
 ├── pyproject.toml
@@ -215,7 +254,7 @@ Results are saved in the `results/` directory:
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
 
 ## Contributing
 
