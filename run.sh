@@ -5,7 +5,6 @@
 #   gemini-cli  - Gemini CLI tool (uses OAuth, no API key needed)
 #   gemini-api  - Direct Gemini API via HTTP (requires GEMINI_API_KEY)
 #   codex       - OpenAI Codex CLI
-#   local       - Local LLM via Ollama/llama-server
 # =============================================================================
 
 set -e
@@ -398,7 +397,6 @@ fi
 # =============================================================================
 echo ""
 echo "Complete. Results:"
-echo "  results/REPORT.md       - Full analysis"
 echo "  results/index.md        - Ranking overview"
 echo "  results/ranked_list.csv - Spreadsheet data"
 echo "  results/evaluation.json - Raw JSON data"
