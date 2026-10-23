@@ -36,8 +36,7 @@ import statistics
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Dict, Set, Tuple, Any, Optional
-from uuid import uuid4
+from typing import List, Dict, Set, Any
 
 import numpy as np
 from fastembed import TextEmbedding
@@ -1118,14 +1117,14 @@ def main():
     all_functions_sim = [s['functions'] for s in similarity_matrix.values()]
     all_fingerprints_sim = [s['fingerprint'] for s in similarity_matrix.values()]
     
-    print(f"\n📊 Similarity Statistics:")
+    print("\n📊 Similarity Statistics:")
     print(f"  Combined:    mean={statistics.mean(all_combined):.3f}, max={max(all_combined):.3f}, min={min(all_combined):.3f}")
     print(f"  Functions:   mean={statistics.mean(all_functions_sim):.3f}, max={max(all_functions_sim):.3f}")
     print(f"  Fingerprint: mean={statistics.mean(all_fingerprints_sim):.3f}, max={max(all_fingerprints_sim):.3f}")
     
     print(f"\n📁 Results saved to: {output}/")
-    print(f"  - smart_similarity.csv")
-    print(f"  - smart_analysis.json")
+    print("  - smart_similarity.csv")
+    print("  - smart_analysis.json")
 
 
 if __name__ == "__main__":

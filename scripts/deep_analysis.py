@@ -23,11 +23,10 @@ import json
 import os
 import re
 import statistics
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import dataclass, field, asdict
-from difflib import SequenceMatcher
 from pathlib import Path
-from typing import List, Tuple, Dict, Set, Optional, Any
+from typing import List, Tuple, Dict, Set, Any
 from uuid import uuid4
 
 import numpy as np

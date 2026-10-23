@@ -19,7 +19,7 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import List
 import argparse
 
 
@@ -301,9 +301,9 @@ def main():
         print(f"  • {s.name}")
         print(f"    Score: {s.total_score}/50 | {s.domain_notes}")
         if not s.features_found:
-            print(f"    → No features beyond basic CRUD")
+            print("    → No features beyond basic CRUD")
         if not s.extra_notes:
-            print(f"    → No extra deliverables (CLI, Docker Compose, etc.)")
+            print("    → No extra deliverables (CLI, Docker Compose, etc.)")
         print()
     
     # Save results

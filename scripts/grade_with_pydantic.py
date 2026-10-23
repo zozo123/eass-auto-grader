@@ -9,11 +9,9 @@ All providers return validated Pydantic models for guaranteed JSON format.
 import argparse
 import json
 import logging
-import os
 import re
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 from typing import Optional
 

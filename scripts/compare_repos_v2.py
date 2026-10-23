@@ -18,9 +18,9 @@ import json
 import os
 import re
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Tuple, Dict, Set, Optional, Any
+from typing import List, Tuple, Dict, Set, Any
 from uuid import uuid4
 
 from fastembed import TextEmbedding

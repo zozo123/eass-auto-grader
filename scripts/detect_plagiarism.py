@@ -20,16 +20,11 @@ import hashlib
 import json
 import os
 import re
-from collections import Counter, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import List, Tuple, Dict, Set, Optional, Any
-from uuid import uuid4
+from typing import List, Tuple, Dict, Set
 
-from fastembed import TextEmbedding
-from qdrant_client import QdrantClient
-from qdrant_client.http import models as qmodels
 from tqdm import tqdm
 
 # ---------------------------------------------------------------------------
@@ -498,7 +493,7 @@ def find_code_matches(profile1: RepoCodeProfile, profile2: RepoCodeProfile) -> L
             code2_preview=f"Total lines: {profile2.total_lines}",
             evidence=[
                 f"N-gram fingerprint overlap: {fp_overlap:.1%}",
-                f"Common code segments detected across codebase"
+                "Common code segments detected across codebase"
             ]
         ))
     
